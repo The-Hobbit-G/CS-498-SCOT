@@ -43,8 +43,10 @@ class SCOT_CAM:
         # Hyperpixel id and pre-computed jump and receptive field size initialization
         # Reference: https://fomoro.com/research/article/receptive-field-calculator
         # (the jump and receptive field sizes for 'fcn101' are heuristic values)
-        self.hyperpixel_ids = util.parse_hyperpixel(hyperpixel_ids)
+        self.hyperpixel_ids = util.parse_hyperpixel(hyperpixel_ids) #string -> int
+        #self.jsz = jump size, self.rfsz = receptive field size
         if backbone in ['resnet50', 'resnet101']:
+            ##For ResNet the jump size(stride) in the feature map of the final convolutional layer is 16
             self.jsz = torch.tensor([4, 4, 4, 4, 8, 8, 8, 8, 16, 16]).to(device)
             self.rfsz = torch.tensor([11, 19, 27, 35, 43, 59, 75, 91, 107, 139]).to(device)
         elif backbone in ['resnet50_ft', 'resnet101_ft']:

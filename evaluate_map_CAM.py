@@ -55,7 +55,7 @@ def run(datapath, benchmark, backbone, thres, alpha, hyperpixel,
     for idx, data in enumerate(dataloader):
         threshold = 0.0
         
-        # a) Retrieve images and adjust their sizes to avoid large numbers of hyperpixels
+        # a) Retrieve images and adjust their sizes to avoid large numbers of hyperpixels(The coordinates of kps will also be adjusted with the same ratio)
         data['src_img'], data['src_kps'], data['src_intratio'] = util.resize(data['src_img'], data['src_kps'][0])
         data['trg_img'], data['trg_kps'], data['trg_intratio'] = util.resize(data['trg_img'], data['trg_kps'][0])
         src_size = data['src_img'].size()

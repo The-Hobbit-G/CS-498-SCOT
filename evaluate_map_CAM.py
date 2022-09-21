@@ -72,10 +72,11 @@ def run(datapath, benchmark, backbone, thres, alpha, hyperpixel,
 
         data['alpha'] = alpha
         tic = time.time()
+        print('src_kps_size:{}'.format(data['src_kps'].size()))
 
         # b) Feed a pair of images to Hyperpixel Flow model
         with torch.no_grad():
-            confidence_ts, src_box, trg_box = model(data['src_img'], data['trg_img'], args.sim, args.exp1, args.exp2, args.eps, args.classmap, data['src_bbox'], data['trg_bbox'], data['src_mask'], data['trg_mask'], backbone)
+            confidence_ts, src_box, trg_box = model(data['src_img'], data['trg_img'], args.sim, args.exp1, args.exp2, args.eps, args.classmap, data['src_bbox'], data['trg_bbox'], data['src_mask'], data['trg_mask'], backbone, data['src_kps'], data['trg_kps'])
             conf, trg_indices = torch.max(confidence_ts, dim=1)
             unique, inv = torch.unique(trg_indices, sorted=False, return_inverse=True)
             trgpt_list.append(len(unique))

@@ -6,6 +6,8 @@ from operator import add
 import torch.nn.functional as F
 import torch
 import gluoncvth as gcv
+import numpy as np
+from matplotlib import pyplot as plt
 
 from . import geometry
 from . import util
@@ -69,8 +71,31 @@ class SCOT_CAM:
         src_mask = args[9]
         trg_mask = args[10]
         backbone = args[11]
-        src_hyperpixels = self.extract_hyperpixel(args[0], maptype, src_bbox, src_mask, backbone)
-        trg_hyperpixels = self.extract_hyperpixel(args[1], maptype, trg_bbox, trg_mask, backbone)
+        src_kps = args[12]
+        trg_kps = args[13]
+        src_kps_feat = src_kps/32
+        trg_kps_feat = trg_kps/32
+        print('src_kps size: {}, trg_kps size:{}'.format(src_kps_feat.size(),trg_kps_feat.size()))
+        print('image0 size: {}, image1 size: {}'.format(args[0].size(),args[1].size()))
+        src_hyperpixels, src_featmap = self.extract_hyperpixel(args[0], maptype, src_bbox, src_mask, backbone)
+        trg_hyperpixels, trg_featmap = self.extract_hyperpixel(args[1], maptype, trg_bbox, trg_mask, backbone)
+        src_featmap = src_featmap.squeeze(0)
+        trg_featmap = trg_featmap.squeeze(0)
+        print('----src,trg featmap size : {},{}'.format(src_featmap.size(),trg_featmap.size()))
+        C_mat = torch.einsum('kij,kmn -> ijmn',(src_featmap,trg_featmap))/(torch.norm(src_featmap,2)*torch.norm(trg_featmap,2))
+        print('C_mat size: {}'.format(C_mat.size()))
+        plt.figure(1)
+        for i in range(src_kps_feat.size()[1]):
+            plt.subplot(1,src_kps_feat.size()[1],i+1)
+            plt.imshow(C_mat[int(src_kps_feat[0][i]),int(src_kps_feat[1][i]),:,:].cpu().numpy())
+        plt.savefig('/home/jianting/SCOT/visualization/C_correspondence_src')
+        C_mat_trg = C_mat.view(2,3,0,1)
+        plt.figure(2)
+        for i in range(trg_kps_feat.size()[1]):
+            plt.subplot(1,trg_kps_feat.size()[1],i+1)
+            plt.imshow(C_mat_trg[int(trg_kps_feat[0][i])-1,int(trg_kps_feat[1][i])-1,:,:].cpu().numpy())
+        plt.savefig('/home/jianting/SCOT/visualization/C_correspondence_trg')
+
         confidence_ts = rhm_map.rhm(src_hyperpixels, trg_hyperpixels, self.hsfilter, args[2], args[3], args[4], args[5])
         return confidence_ts, src_hyperpixels[0], trg_hyperpixels[0]
 
@@ -78,6 +103,7 @@ class SCOT_CAM:
     def extract_hyperpixel(self, img, maptype, bbox, mask, backbone="resnet101"):
         r"""Given image, extract desired list of hyperpixels"""
         hyperfeats, rfsz, jsz, feat_map, fc = self.extract_intermediate_feat(img.unsqueeze(0), return_hp=True, backbone=backbone)
+        print('image size:{}, feature map size:{}'.format(img.size(),feat_map.size()))
         hpgeometry = geometry.receptive_fields(rfsz, jsz, hyperfeats.size()).to(self.device)
         hyperfeats = hyperfeats.view(hyperfeats.size()[0], -1).t()
 
@@ -106,7 +132,7 @@ class SCOT_CAM:
             weights[hselect>0.5*scale,:] = 0.9
             weights[hselect>0.6*scale,:] = 1.0
         
-        return hpgeometry, hyperfeats, img.size()[1:][::-1], weights
+        return (hpgeometry, hyperfeats, img.size()[1:][::-1], weights),feat_map
 
 
     def extract_intermediate_feat(self, img, return_hp=True, backbone='resnet101'):
@@ -189,6 +215,7 @@ class SCOT_CAM:
 
 
     def get_CAM_multi(self, img, feat_map, fc, sz, top_k=2):
+        [img_h,img_w] = img.size
         scales = [1.0,1.5,2.0]
         map_list = []
         for scale in scales:

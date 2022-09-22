@@ -1,6 +1,10 @@
 """Implementation of optimal transport+geometric post-processing (Hough voting)"""
 
 import math
+import copy
+import cv2
+from matplotlib import pyplot as plt
+import numpy as np
 
 import torch.nn.functional as F
 import torch
@@ -48,7 +52,7 @@ def appearance_similarity(src_feats, trg_feats, exp1=3):
     return sim
 
 
-def appearance_similarityOT(src_feats, trg_feats, exp1=1.0, exp2=1.0, eps=0.05, src_weights=None, trg_weights=None):
+def appearance_similarityOT(src_feats, trg_feats, src_hpfeats_orisize, trg_hpfeats_orisize, exp1=1.0, exp2=1.0, eps=0.05, src_weights=None, trg_weights=None):
     r"""Semantic Appearance Similarity"""
     #st_weights = src_weights.mm(trg_weights.t())
     print('size of fs:{}'.format(src_feats.size()))
@@ -96,6 +100,8 @@ def appearance_similarityOT(src_feats, trg_feats, exp1=1.0, exp2=1.0, eps=0.05, 
     PI = torch.pow(torch.clamp(PI, min=0), exp2)
     print('size of T: {}'.format(PI.size()))
 
+    # C_orisize = sim.view()
+
     return PI
 
 
@@ -125,19 +131,36 @@ def build_hspace(src_imsize, trg_imsize, ncells):
     return nbins_x, nbins_y, hs_cellsize
 
 
-def rhm(src_hyperpixels, trg_hyperpixels, hsfilter, sim, exp1, exp2, eps, ncells=8192):
+def rhm(src_hyperpixels, trg_hyperpixels, src_kps_feat, trg_kps_feat, C_mat, hsfilter, sim, exp1, exp2, eps, ncells=8192):
     r"""Regularized Hough matching"""
     # Unpack hyperpixels
-    src_hpgeomt, src_hpfeats, src_imsize, src_weights = src_hyperpixels
-    trg_hpgeomt, trg_hpfeats, trg_imsize, trg_weights = trg_hyperpixels
+    # src_hpgeomt, src_hpfeats, src_imsize, src_weights = src_hyperpixels
+    # trg_hpgeomt, trg_hpfeats, trg_imsize, trg_weights = trg_hyperpixels
+
+    src_hpgeomt, src_hpfeats, src_imsize, src_weights, src_hpfeats_orisize = src_hyperpixels
+    trg_hpgeomt, trg_hpfeats, trg_imsize, trg_weights, trg_hpfeats_orisize = trg_hyperpixels
 
     # Prepare for the voting procedure
     if sim in ['cos', 'cosGeo']:
         votes = appearance_similarity(src_hpfeats, trg_hpfeats, exp1)
     if sim in ['OT', 'OTGeo']:
-        votes = appearance_similarityOT(src_hpfeats, trg_hpfeats, exp1, exp2, eps, src_weights, trg_weights)
+        # votes = appearance_similarityOT(src_hpfeats, trg_hpfeats, exp1, exp2, eps, src_weights, trg_weights)
+        votes = appearance_similarityOT(src_hpfeats, trg_hpfeats, src_hpfeats_orisize, trg_hpfeats_orisize, exp1, exp2, eps, src_weights, trg_weights)
     if sim in ['OT', 'cos', 'cos2']:
         return votes
+
+    """visualize votes as the optimal transport matrix T"""
+    # ori_size = src_hpfeats_orisize[1:]+trg_hpfeats_orisize[1:]
+    # ori_size = tuple(ori_size.cpu().numpy())
+    PI_orisize = votes.view_as(C_mat)
+    plt.figure(1)
+    for i in range(src_kps_feat.size()[1]):
+        plt.subplot(1,src_kps_feat.size()[1],i+1)
+        plt.imshow(PI_orisize[int(src_kps_feat[0][i]),int(src_kps_feat[1][i]),:,:].cpu().numpy())
+    plt.savefig('/home/jianting/SCOT/visualization/OTmatrix_src')
+
+
+
 
     nbins_x, nbins_y, hs_cellsize = build_hspace(src_imsize, trg_imsize, ncells)
     bin_ids = hspace_bin_ids(src_imsize, src_hpgeomt, trg_hpgeomt, hs_cellsize, nbins_x)

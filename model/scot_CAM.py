@@ -7,6 +7,8 @@ import torch.nn.functional as F
 import torch
 import gluoncvth as gcv
 import numpy as np
+import copy
+import cv2
 from matplotlib import pyplot as plt
 
 from . import geometry
@@ -14,6 +16,21 @@ from . import util
 from . import rhm_map
 #from torchvision.models import resnet
 from . import resnet
+from data.dataset import Normalize, UnNormalize
+
+
+def tensor_to_np(tensor):
+    img = tensor.mul(255).byte()
+    img = img.cpu().numpy().transpose((1, 2, 0))
+    return img
+
+def show_from_cv(img, kps,title):
+    assert(type(title)==str)
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    # print(img.shape, kps)
+    for i in range(kps.shape[1]):
+        cv2.circle(img,(kps[0][i],kps[1][i]),3,(0,0,255),-1)
+    cv2.imwrite('/home/jianting/SCOT/visualization/'+title+'.jpg',img)
 
 
 class SCOT_CAM:
@@ -62,6 +79,7 @@ class SCOT_CAM:
         self.hsfilter = geometry.gaussian2d(7).to(device)
         self.device = device
         self.benchmark = benchmark
+        self.detransform = UnNormalize() ##For visualizing the imgs
 
     def __call__(self, *args, **kwargs):
         r"""Forward pass"""
@@ -73,14 +91,25 @@ class SCOT_CAM:
         backbone = args[11]
         src_kps = args[12]
         trg_kps = args[13]
-        src_kps_feat = src_kps/32
-        trg_kps_feat = trg_kps/32
+        src_kps_feat = src_kps/self.jsz[self.hyperpixel_ids[0]]
+        trg_kps_feat = trg_kps/self.jsz[self.hyperpixel_ids[0]]
         print('src_kps size: {}, trg_kps size:{}'.format(src_kps_feat.size(),trg_kps_feat.size()))
         print('image0 size: {}, image1 size: {}'.format(args[0].size(),args[1].size()))
-        src_hyperpixels, src_featmap = self.extract_hyperpixel(args[0], maptype, src_bbox, src_mask, backbone)
-        trg_hyperpixels, trg_featmap = self.extract_hyperpixel(args[1], maptype, trg_bbox, trg_mask, backbone)
-        src_featmap = src_featmap.squeeze(0)
-        trg_featmap = trg_featmap.squeeze(0)
+        print('image type:{}'.format(type(args[0]),type(args[1])))
+
+        ##visualize the souce and target images
+        source_image = self.detransform(args[0])
+        target_image = self.detransform(args[1])
+        scr_image = tensor_to_np(source_image)
+        trg_image = tensor_to_np(target_image)
+        show_from_cv(scr_image,src_kps.cpu().numpy().astype(int),'source_image')
+        show_from_cv(trg_image,trg_kps.cpu().numpy().astype(int),'target_image')
+        #########
+
+        src_hyperpixels = self.extract_hyperpixel(args[0], maptype, src_bbox, src_mask, backbone)
+        trg_hyperpixels = self.extract_hyperpixel(args[1], maptype, trg_bbox, trg_mask, backbone)
+        src_featmap = src_hyperpixels[-1]
+        trg_featmap = trg_hyperpixels[-1]
         print('----src,trg featmap size : {},{}'.format(src_featmap.size(),trg_featmap.size()))
         C_mat = torch.einsum('kij,kmn -> ijmn',(src_featmap,trg_featmap))/(torch.norm(src_featmap,2)*torch.norm(trg_featmap,2))
         print('C_mat size: {}'.format(C_mat.size()))
@@ -89,14 +118,16 @@ class SCOT_CAM:
             plt.subplot(1,src_kps_feat.size()[1],i+1)
             plt.imshow(C_mat[int(src_kps_feat[0][i]),int(src_kps_feat[1][i]),:,:].cpu().numpy())
         plt.savefig('/home/jianting/SCOT/visualization/C_correspondence_src')
-        C_mat_trg = C_mat.view(2,3,0,1)
+        '''
+        C_mat_trg = C_mat.permute(2,3,0,1)
         plt.figure(2)
         for i in range(trg_kps_feat.size()[1]):
             plt.subplot(1,trg_kps_feat.size()[1],i+1)
-            plt.imshow(C_mat_trg[int(trg_kps_feat[0][i])-1,int(trg_kps_feat[1][i])-1,:,:].cpu().numpy())
+            plt.imshow(C_mat_trg[int(trg_kps_feat[0][i]),int(trg_kps_feat[1][i]),:,:].cpu().numpy())
         plt.savefig('/home/jianting/SCOT/visualization/C_correspondence_trg')
+        '''
 
-        confidence_ts = rhm_map.rhm(src_hyperpixels, trg_hyperpixels, self.hsfilter, args[2], args[3], args[4], args[5])
+        confidence_ts = rhm_map.rhm(src_hyperpixels, trg_hyperpixels, src_kps_feat, trg_kps_feat, C_mat, self.hsfilter, args[2], args[3], args[4], args[5])
         return confidence_ts, src_hyperpixels[0], trg_hyperpixels[0]
 
 
@@ -105,15 +136,19 @@ class SCOT_CAM:
         hyperfeats, rfsz, jsz, feat_map, fc = self.extract_intermediate_feat(img.unsqueeze(0), return_hp=True, backbone=backbone)
         print('image size:{}, feature map size:{}'.format(img.size(),feat_map.size()))
         hpgeometry = geometry.receptive_fields(rfsz, jsz, hyperfeats.size()).to(self.device)
-        hyperfeats = hyperfeats.view(hyperfeats.size()[0], -1).t()
+        
+        hyperfeats_orisize = copy.deepcopy(hyperfeats)
+        hyperfeats = hyperfeats.view(hyperfeats.size()[0], -1).t() ##heperfeats size: (3136,50,75)->(3136,3750)->(3750,3136)
 
         # Prune boxes on margins (Otherwise may cause error)
         if self.benchmark in ['TSS']:
             hpgeometry, valid_ids = geometry.prune_margin(hpgeometry, img.size()[1:], 10)
             hyperfeats = hyperfeats[valid_ids, :]
 
-        weights = torch.ones(len(hyperfeats),1).to(hyperfeats.device)
+        weights = torch.ones(len(hyperfeats),1).to(hyperfeats.device) ##Since hyperfeats.size() = (3750,3136), len(hyperfeats)=3750
+        print('--**--**weights size: {}'.format(weights.size()))
         if maptype in [1]: # weight points
+            ##Mind that the given mask is None in our case since we don't specify args.cam as shown in evaluate_map_CAM.py
             if mask is None:
                 # get CAM mask
                 if backbone=='fcn101':
@@ -124,6 +159,7 @@ class SCOT_CAM:
             else:
                 scale = 255.0
 
+            # print('--**--**mask size:{}'.format(mask.size))
             hpos = geometry.center(hpgeometry)
             hselect = mask[hpos[:,1].long(),hpos[:,0].long()].to(hpos.device)
             weights = 0.5*torch.ones(len(hyperfeats),1).to(hpos.device)
@@ -131,16 +167,19 @@ class SCOT_CAM:
             weights[hselect>0.4*scale,:] = 0.8
             weights[hselect>0.5*scale,:] = 0.9
             weights[hselect>0.6*scale,:] = 1.0
+            ##weights are gotten by applying staircase function to CAM and they will be used as prior distribution for OT problem
         
-        return (hpgeometry, hyperfeats, img.size()[1:][::-1], weights),feat_map
+        return hpgeometry, hyperfeats, img.size()[1:][::-1], weights, hyperfeats_orisize
 
 
     def extract_intermediate_feat(self, img, return_hp=True, backbone='resnet101'):
         r"""Extract desired a list of intermediate features"""
+        """This is the pre-processing (Input feature extraction) We extract features from feature maps from different layers"""
 
         feats = []
         rfsz = self.rfsz[self.hyperpixel_ids[0]]
         jsz = self.jsz[self.hyperpixel_ids[0]]
+        #The receptive field size and the jump size are decided by the first layer in the hyperpixel id(the shallowest one)
 
         # Layer 0
         feat = self.backbone.conv1.forward(img)
@@ -191,6 +230,12 @@ class SCOT_CAM:
                 continue
             feats[idx] = F.interpolate(feat, tuple(feats[0].size()[2:]), None, 'bilinear', True)
         feats = torch.cat(feats, dim=1)
+        ## feats.size() = (1 ,channels, h, w)  eg:(1,3136,50,75)
+        ## So if we return feats[0], we will get an extracted feature map with size (3136, 50, 75) 
+        # and this feature map is gotten by upsampling stacking the feature maps selected layers
+        # In this way, we can make use of the multi-level representations
+
+        print('****feats size:{}'.format(feats.size()))
 
         return feats[0], rfsz, jsz, feat_map, fc
     
@@ -215,7 +260,7 @@ class SCOT_CAM:
 
 
     def get_CAM_multi(self, img, feat_map, fc, sz, top_k=2):
-        [img_h,img_w] = img.size
+        # [img_h,img_w] = img.size()
         scales = [1.0,1.5,2.0]
         map_list = []
         for scale in scales:
@@ -243,8 +288,12 @@ class SCOT_CAM:
             
             map_list.append(output_cam)
         map_list = torch.stack(map_list,dim=0)
+        #map_list size = (3,199,300), same as the image size
+        # print('--**map list size:{}'.format(map_list.size()))
         sum_cam = map_list.sum(0)
         norm_cam = sum_cam / (sum_cam.max()+1e-5)
+        # print('--**mask size:{}'.format(norm_cam.size()))
+        #norm_cam(mask) size is (199*300)=(image_H, image_W)
 
         return norm_cam
 

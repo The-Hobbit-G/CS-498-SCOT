@@ -54,6 +54,9 @@ def run(datapath, benchmark, backbone, thres, alpha, hyperpixel,
     PCK_list = []
     for idx, data in enumerate(dataloader):
         threshold = 0.0
+        # print('idx:{}'.format(idx))
+        # if idx>0:
+        #     break
         
         # a) Retrieve images and adjust their sizes to avoid large numbers of hyperpixels(The coordinates of kps will also be adjusted with the same ratio)
         data['src_img'], data['src_kps'], data['src_intratio'] = util.resize(data['src_img'], data['src_kps'][0])

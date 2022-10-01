@@ -10,6 +10,9 @@ import numpy as np
 import copy
 import cv2
 from matplotlib import pyplot as plt
+from sklearn.cluster import KMeans
+from sklearn.decomposition import PCA
+from sklearn.decomposition import NMF
 
 from . import geometry
 from . import util
@@ -30,7 +33,9 @@ def show_from_cv(img, kps,title):
     # print(img.shape, kps)
     for i in range(kps.shape[1]):
         cv2.circle(img,(kps[0][i],kps[1][i]),3,(0,0,255),-1)
-    cv2.imwrite('/home/jianting/SCOT/visualization/'+title+'.jpg',img)
+    #cv2.imwrite('/home/jianting/SCOT/visualization/'+title+'.jpg',img)
+    img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+    return img
 
 
 class SCOT_CAM:
@@ -102,8 +107,8 @@ class SCOT_CAM:
         target_image = self.detransform(args[1])
         scr_image = tensor_to_np(source_image)
         trg_image = tensor_to_np(target_image)
-        show_from_cv(scr_image,src_kps.cpu().numpy().astype(int),'source_image')
-        show_from_cv(trg_image,trg_kps.cpu().numpy().astype(int),'target_image')
+        scr_image_with_rps = show_from_cv(scr_image,src_kps.cpu().numpy().astype(int),'source_image')
+        trg_image_with_rps = show_from_cv(trg_image,trg_kps.cpu().numpy().astype(int),'target_image')
         #########
 
         src_hyperpixels = self.extract_hyperpixel(args[0], maptype, src_bbox, src_mask, backbone)
@@ -111,13 +116,15 @@ class SCOT_CAM:
         src_featmap = src_hyperpixels[-1]
         trg_featmap = trg_hyperpixels[-1]
         print('----src,trg featmap size : {},{}'.format(src_featmap.size(),trg_featmap.size()))
+
+        num_kps = src_kps_feat.size()[1]
+        
+        """Visualize cross-similarity C"""
+        
         C_mat = torch.einsum('kij,kmn -> ijmn',(src_featmap,trg_featmap))/(torch.norm(src_featmap,2)*torch.norm(trg_featmap,2))
         print('C_mat size: {}'.format(C_mat.size()))
-        plt.figure(1)
-        for i in range(src_kps_feat.size()[1]):
-            plt.subplot(1,src_kps_feat.size()[1],i+1)
-            plt.imshow(C_mat[int(src_kps_feat[0][i]),int(src_kps_feat[1][i]),:,:].cpu().numpy())
-        plt.savefig('/home/jianting/SCOT/visualization/C_correspondence_src')
+        
+
         '''
         C_mat_trg = C_mat.permute(2,3,0,1)
         plt.figure(2)
@@ -127,8 +134,230 @@ class SCOT_CAM:
         plt.savefig('/home/jianting/SCOT/visualization/C_correspondence_trg')
         '''
 
-        confidence_ts = rhm_map.rhm(src_hyperpixels, trg_hyperpixels, src_kps_feat, trg_kps_feat, C_mat, self.hsfilter, args[2], args[3], args[4], args[5])
+        """Visualize cross-similarity OT matrix T and p(m|D) after RHM"""
+        ##cross-similarity T for the source image
+        confidence_ts, OT_mat, C_2dim = rhm_map.rhm(src_hyperpixels, trg_hyperpixels, src_kps_feat, trg_kps_feat, self.hsfilter, args[2], args[3], args[4], args[5])
+        print('**confidence_ts size: {}'.format(confidence_ts.size()))
+        confidence_ts_orisize = confidence_ts.view_as(C_mat)
+        OT_mat_orisize = OT_mat.view_as(C_mat)
+        print('**confidence_ts original size:{}'.format(confidence_ts_orisize.size()))
+
+        plt.figure(figsize=(3*num_kps,3*4))
+        plt.subplot(4,num_kps,1)
+        plt.title('source image')
+        plt.imshow(scr_image_with_rps)
+        plt.subplot(4,num_kps,2)
+        plt.title('target image')
+        plt.imshow(trg_image_with_rps)
+
+        for i in range(num_kps):
+            ##Correlation matrix C
+            plt.subplot(4,num_kps,i+1+num_kps)
+            plt.title('Correlation matrix')
+            plt.imshow(C_mat[int(src_kps_feat[0][i]),int(src_kps_feat[1][i]),:,:].cpu().numpy())
+            ##OT matrix T
+            plt.subplot(4,num_kps,i+1+2*num_kps)
+            plt.title('OT matrix')
+            plt.imshow(OT_mat_orisize[int(src_kps_feat[0][i]),int(src_kps_feat[1][i]),:,:].cpu().numpy()) 
+            #RHM confidence
+            plt.subplot(4,num_kps,i+1+3*num_kps)
+            plt.title('RHM')
+            plt.imshow(confidence_ts_orisize[int(src_kps_feat[0][i]),int(src_kps_feat[1][i]),:,:].cpu().numpy())
+        plt.savefig('/home/jianting/SCOT/visualization/all_three_matrices_cross_matrix')
+
+
+        
+        '''
+        plt.figure(1)
+        for i in range(num_kps):
+            plt.subplot(1,num_kps,i+1)
+            plt.imshow(C_mat[int(src_kps_feat[0][i]),int(src_kps_feat[1][i]),:,:].cpu().numpy())
+        plt.savefig('/home/jianting/SCOT/visualization/C_correspondence_src')
+
+        plt.figure(3)
+        for i in range(num_kps):
+            plt.subplot(1,num_kps,i+1)
+            plt.imshow(confidence_ts_orisize[int(src_kps_feat[0][i]),int(src_kps_feat[1][i]),:,:].cpu().numpy())
+        plt.savefig('/home/jianting/SCOT/visualization/RHM_confidence_src')
+        '''
+
+
+        """Visualize self-similarity C"""
+        ##self-similarity C for the source image
+        C_self_src = torch.einsum('kij,kmn -> ijmn',(src_featmap,src_featmap))/(torch.norm(src_featmap,2)*torch.norm(src_featmap,2))
+        
+
+    
+        """Visualize self-similarity OT matrix T and p(m|D) after RHM"""
+        ##self-similarity T for the source image
+        confidence_ts_selfsim, OT_mat_selfsim, C_2dim_selfsim = rhm_map.rhm(src_hyperpixels, src_hyperpixels, src_kps_feat, src_kps_feat, self.hsfilter, args[2], args[3], args[4], args[5])
+        confidence_ts_selfsim_orisize = confidence_ts_selfsim.view_as(C_self_src)
+        OT_mat_selfsim_orisize = OT_mat_selfsim.view_as(C_self_src)
+
+
+        plt.figure(figsize=(3*num_kps,3*4))
+        plt.subplot(4,num_kps,1)
+        plt.title('source image')
+        plt.imshow(scr_image_with_rps)
+        # plt.subplot(4,num_kps,2)
+        # plt.title('target image')
+        # plt.imshow(trg_image_with_rps)
+
+        for i in range(num_kps):
+            ##Correlation matrix C
+            plt.subplot(4,num_kps,i+1+num_kps)
+            plt.title('Correlation matrix')
+            plt.imshow(C_self_src[int(src_kps_feat[0][i]),int(src_kps_feat[1][i]),:,:].cpu().numpy())
+            ##OT matrix T
+            plt.subplot(4,num_kps,i+1+2*num_kps)
+            plt.title('OT matrix')
+            plt.imshow(OT_mat_selfsim_orisize[int(src_kps_feat[0][i]),int(src_kps_feat[1][i]),:,:].cpu().numpy()) 
+            #RHM confidence
+            plt.subplot(4,num_kps,i+1+3*num_kps)
+            plt.title('RHM')
+            plt.imshow(confidence_ts_selfsim_orisize[int(src_kps_feat[0][i]),int(src_kps_feat[1][i]),:,:].cpu().numpy())
+        plt.savefig('/home/jianting/SCOT/visualization/all_three_matrices_self_similarity')
+
+
+        '''
+        plt.figure(2)
+        for i in range(num_kps):
+            plt.subplot(1,num_kps,i+1)
+            plt.imshow(C_self_src[int(src_kps_feat[0][i]),int(src_kps_feat[1][i]),:,:].cpu().numpy())
+        plt.savefig('/home/jianting/SCOT/visualization/C_selfsim_src')
+        plt.figure(4)
+        for i in range(num_kps):
+            plt.subplot(1,num_kps,i+1)
+            plt.imshow(confidence_ts_selfsim_orisize[int(src_kps_feat[0][i]),int(src_kps_feat[1][i]),:,:].cpu().numpy())
+        plt.savefig('/home/jianting/SCOT/visualization/selfsim_RHM_confidence_src')
+        '''
+
+        """Visualize the entropy, mean, sum, std of self-similarity C(C_2dim_selfsim) and T(OT_mat_selfsim) over axis =1 so that [HW*HW] --> [HW,1]"""
+        self.plot_selfsim_statistic(C_2dim_selfsim,OT_mat_selfsim,C_self_src[:,:,0,0],scr_image_with_rps)
+
+
+        """Visualize the result of applying K-means, PCA, NNMF at src_hyperfeats"""
+        
+        # k_list = [3,7,20,35]
+        # k_list = [200]
+        k_list = [3,7]
+        #visualize K-means results
+        self.visualize_k_means(src_hyperpixels[1],k_list)
+        #visualize PCA results
+        self.visualize_pca(src_hyperpixels[1],k_list)
+        #visualize NMF results
+        self.visualize_nmf(src_hyperpixels[1],k_list)
+
         return confidence_ts, src_hyperpixels[0], trg_hyperpixels[0]
+
+    def plot_selfsim_statistic(self, C, T, C_orisize, scr_image_with_rps):
+        """Visualize the entropy, mean, sum, std of self-similarity C(C_2dim_selfsim) and T(OT_mat_selfsim) over axis =1 so that [HW*HW] --> [HW,1]"""
+        PC = F.softmax(C,dim=1)
+        PT = F.softmax(T,dim=1)
+        lnPC = torch.log(PC)
+        lnPT = torch.log(PT)
+        C_entropy = torch.sum(PC*lnPC,dim =1).view_as(C_orisize)
+        T_entropy = torch.sum(PT*lnPT,dim =1).view_as(C_orisize)
+        C_mean = torch.mean(C,dim=1).view_as(C_orisize)
+        T_mean = torch.mean(T,dim=1).view_as(C_orisize)
+        C_sum = torch.sum(C,dim=1).view_as(C_orisize)
+        T_sum = torch.sum(T,dim=1).view_as(C_orisize)
+        C_std = torch.std(C,dim=1).view_as(C_orisize)
+        T_std = torch.std(T,dim=1).view_as(C_orisize)
+
+        plt.figure(figsize=(3*2,3*5))
+        plt.subplot(5,2,1)
+        plt.title('source image')
+        plt.imshow(scr_image_with_rps)
+        plt.subplot(5,2,3)
+        plt.title('C entropy')
+        plt.imshow(C_entropy.cpu().numpy())
+        plt.subplot(5,2,4)
+        plt.title('T entropy')
+        plt.imshow(T_entropy.cpu().numpy())
+        plt.subplot(5,2,5)
+        plt.title('C mean')
+        plt.imshow(C_mean.cpu().numpy())
+        plt.subplot(5,2,6)
+        plt.title('T mean')
+        plt.imshow(T_mean.cpu().numpy())
+        plt.subplot(5,2,7)
+        plt.title('C sum')
+        plt.imshow(C_sum.cpu().numpy())
+        plt.subplot(5,2,8)
+        plt.title('T sum')
+        plt.imshow(T_sum.cpu().numpy())
+        plt.subplot(5,2,9)
+        plt.title('C std')
+        plt.imshow(C_std.cpu().numpy())
+        plt.subplot(5,2,10)
+        plt.title('T std')
+        plt.imshow(T_std.cpu().numpy())
+        plt.savefig('/home/jianting/SCOT/visualization/self_similarity_statistics')
+
+    def visualize_k_means(self, hyperfeats, k_list):
+        num_k = len(k_list)
+        hyperfeats = hyperfeats.cpu().numpy()
+        GT_list = []
+        for k in k_list:
+            km = KMeans(n_clusters=k).fit(hyperfeats)
+            # print(km.cluster_centers_,km.cluster_centers_.shape)
+            # G = hyperfeats@np.linalg.pinv(km.cluster_centers_)
+            # print(G)
+            # G_list.append(G)
+            GT = np.zeros((k,hyperfeats.shape[0])) #GT shape:k*HW
+            assert(hyperfeats.shape[0]==km.labels_.shape[0])
+            for label in range(km.labels_.shape[0]):
+                GT[km.labels_[label],label]=1
+            print(GT)
+        assert(len(GT_list)==num_k)
+        plt.figure()
+        for i in range(num_k):
+            plt.subplot(num_k,1,i+1)
+            plt.title('G matrix after k-means with k={}'.format(k_list[i]))
+            plt.axis('off')
+            plt.imshow(GT_list[i])
+        plt.savefig('/home/jianting/SCOT/visualization/G_mat_k_means')
+
+    def visualize_pca(self, hyperfeats, k_list):
+        num_k = len(k_list)
+        hyperfeats = hyperfeats.cpu().numpy()
+        GT_list = []
+        for k in k_list:
+            pca = PCA(n_components=k)
+            G = pca.fit_transform(hyperfeats) #G shape: HW*k
+            GT_list.append(G.T)
+        assert(len(GT_list)==num_k)
+        plt.figure()
+        for i in range(num_k):
+            plt.subplot(num_k,1,i+1)
+            plt.title('G matrix after PCA with k={}'.format(k_list[i]))
+            plt.axis('off')
+            plt.imshow(GT_list[i])
+        plt.savefig('/home/jianting/SCOT/visualization/G_mat_PCA')
+
+    def visualize_nmf(self, hyperfeats, k_list):
+        num_k = len(k_list)
+        hyperfeats = hyperfeats.cpu().numpy()
+        GT_list = []
+        for k in k_list:
+            nmf = NMF(n_components=k)
+            G = nmf.fit_transform(hyperfeats) #G shape: HW*k
+            GT_list.append(G.T)
+        assert(len(GT_list)==num_k)
+        plt.figure()
+        for i in range(num_k):
+            plt.subplot(num_k,1,i+1)
+            plt.title('G matrix after PCA with k={}'.format(k_list[i]))
+            plt.axis('off')
+            plt.imshow(GT_list[i])
+        plt.savefig('/home/jianting/SCOT/visualization/G_mat_NMF')
+
+        
+
+
+
+
 
 
     def extract_hyperpixel(self, img, maptype, bbox, mask, backbone="resnet101"):

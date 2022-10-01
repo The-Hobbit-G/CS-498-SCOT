@@ -102,7 +102,8 @@ def appearance_similarityOT(src_feats, trg_feats, src_hpfeats_orisize, trg_hpfea
 
     # C_orisize = sim.view()
 
-    return PI
+    #return OT and C
+    return PI,sim
 
 
 
@@ -131,7 +132,7 @@ def build_hspace(src_imsize, trg_imsize, ncells):
     return nbins_x, nbins_y, hs_cellsize
 
 
-def rhm(src_hyperpixels, trg_hyperpixels, src_kps_feat, trg_kps_feat, C_mat, hsfilter, sim, exp1, exp2, eps, ncells=8192):
+def rhm(src_hyperpixels, trg_hyperpixels, src_kps_feat, trg_kps_feat, hsfilter, sim, exp1, exp2, eps, ncells=8192):
     r"""Regularized Hough matching"""
     # Unpack hyperpixels
     # src_hpgeomt, src_hpfeats, src_imsize, src_weights = src_hyperpixels
@@ -145,10 +146,11 @@ def rhm(src_hyperpixels, trg_hyperpixels, src_kps_feat, trg_kps_feat, C_mat, hsf
         votes = appearance_similarity(src_hpfeats, trg_hpfeats, exp1)
     if sim in ['OT', 'OTGeo']:
         # votes = appearance_similarityOT(src_hpfeats, trg_hpfeats, exp1, exp2, eps, src_weights, trg_weights)
-        votes = appearance_similarityOT(src_hpfeats, trg_hpfeats, src_hpfeats_orisize, trg_hpfeats_orisize, exp1, exp2, eps, src_weights, trg_weights)
+        votes,sim_mat = appearance_similarityOT(src_hpfeats, trg_hpfeats, src_hpfeats_orisize, trg_hpfeats_orisize, exp1, exp2, eps, src_weights, trg_weights)
     if sim in ['OT', 'cos', 'cos2']:
         return votes
 
+    '''
     """visualize votes as the optimal transport matrix T"""
     # ori_size = src_hpfeats_orisize[1:]+trg_hpfeats_orisize[1:]
     # ori_size = tuple(ori_size.cpu().numpy())
@@ -157,10 +159,8 @@ def rhm(src_hyperpixels, trg_hyperpixels, src_kps_feat, trg_kps_feat, C_mat, hsf
     for i in range(src_kps_feat.size()[1]):
         plt.subplot(1,src_kps_feat.size()[1],i+1)
         plt.imshow(PI_orisize[int(src_kps_feat[0][i]),int(src_kps_feat[1][i]),:,:].cpu().numpy())
-    plt.savefig('/home/jianting/SCOT/visualization/OTmatrix_src')
-
-
-
+    plt.savefig('/home/jianting/SCOT/visualization/self_sim_OTmatrix_src') if src_hpfeats_orisize.equal(trg_hpfeats_orisize) else plt.savefig('/home/jianting/SCOT/visualization/OTmatrix_src')
+    '''
 
     nbins_x, nbins_y, hs_cellsize = build_hspace(src_imsize, trg_imsize, ncells)
     bin_ids = hspace_bin_ids(src_imsize, src_hpgeomt, trg_hpgeomt, hs_cellsize, nbins_x)
@@ -176,6 +176,6 @@ def rhm(src_hyperpixels, trg_hyperpixels, src_kps_feat, trg_kps_feat, C_mat, hsf
     hspace = F.conv2d(hspace.view(1, 1, nbins_y, nbins_x),
                       hsfilter.unsqueeze(0).unsqueeze(0), padding=3).view(-1)
 
-    return votes * torch.index_select(hspace, dim=0, index=bin_ids.view(-1)).view_as(votes)
+    return votes * torch.index_select(hspace, dim=0, index=bin_ids.view(-1)).view_as(votes), votes, sim_mat
 
 

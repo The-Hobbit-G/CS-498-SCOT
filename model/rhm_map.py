@@ -132,7 +132,7 @@ def build_hspace(src_imsize, trg_imsize, ncells):
     return nbins_x, nbins_y, hs_cellsize
 
 
-def rhm(src_hyperpixels, trg_hyperpixels, src_kps_feat, trg_kps_feat, hsfilter, sim, exp1, exp2, eps, ncells=8192):
+def rhm(src_hyperpixels, trg_hyperpixels, hsfilter, sim, exp1, exp2, eps, ncells=8192):
     r"""Regularized Hough matching"""
     # Unpack hyperpixels
     # src_hpgeomt, src_hpfeats, src_imsize, src_weights = src_hyperpixels
@@ -146,7 +146,7 @@ def rhm(src_hyperpixels, trg_hyperpixels, src_kps_feat, trg_kps_feat, hsfilter, 
         votes = appearance_similarity(src_hpfeats, trg_hpfeats, exp1)
     if sim in ['OT', 'OTGeo']:
         # votes = appearance_similarityOT(src_hpfeats, trg_hpfeats, exp1, exp2, eps, src_weights, trg_weights)
-        votes,sim_mat = appearance_similarityOT(src_hpfeats, trg_hpfeats, src_hpfeats_orisize, trg_hpfeats_orisize, exp1, exp2, eps, src_weights, trg_weights)
+        votes,sim_mat_C = appearance_similarityOT(src_hpfeats, trg_hpfeats, src_hpfeats_orisize, trg_hpfeats_orisize, exp1, exp2, eps, src_weights, trg_weights)
     if sim in ['OT', 'cos', 'cos2']:
         return votes
 
@@ -176,6 +176,6 @@ def rhm(src_hyperpixels, trg_hyperpixels, src_kps_feat, trg_kps_feat, hsfilter, 
     hspace = F.conv2d(hspace.view(1, 1, nbins_y, nbins_x),
                       hsfilter.unsqueeze(0).unsqueeze(0), padding=3).view(-1)
 
-    return votes * torch.index_select(hspace, dim=0, index=bin_ids.view(-1)).view_as(votes), votes, sim_mat
+    return votes * torch.index_select(hspace, dim=0, index=bin_ids.view(-1)).view_as(votes), votes, sim_mat_C
 
 

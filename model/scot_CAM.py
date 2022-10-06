@@ -243,7 +243,7 @@ class SCOT_CAM:
         #visualize NMF results
         self.visualize_nmf(src_hyperpixels[1],C_self_src[:,:,0,0],k_list,n_rows)
 
-        '''
+        
         """Visualize different sim with different backbone"""
         ##You can choose different backbones by changing the 'backbone' attribute and different similarity matrix by changing the 'sim' attribute
         sim = 'Correlation' #'OT','RHM'
@@ -254,7 +254,7 @@ class SCOT_CAM:
         ## You can choose different backbones by changing the 'backbone' attribute and different factorization by changing fac
         fac = 'KMeans' # 'PCA','NMF'
         self.visualize_G(args[0], maptype, src_bbox, src_mask, k_list, backbone, fac)
-        '''
+        ''''''
         
 
         return confidence_ts, src_hyperpixels[0], trg_hyperpixels[0]

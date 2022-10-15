@@ -222,13 +222,13 @@ class SCOT_CAM:
 
         
         """Visualize the entropy, mean, sum, std of self-similarity C(C_2dim_selfsim) and T(OT_mat_selfsim) over axis =1 so that [HW*HW] --> [HW,1]"""
-        # self.plot_selfsim_statistic(C_2dim_selfsim,OT_mat_selfsim,confidence_ts_selfsim,C_self_src[:,:,0,0],scr_image_with_rps)
+        self.plot_selfsim_statistic(C_2dim_selfsim,OT_mat_selfsim,confidence_ts_selfsim,C_self_src[:,:,0,0],scr_image_with_rps)
 
         
         """Visualize the result of applying K-means, PCA, NNMF at src_hyperfeats"""
         
         # k_list = [3,7,20,35]
-        
+        '''
         # k_list = [200]
         k_list = [4,9,16,25,36]
         n_rows = [2,3,4,5,6]
@@ -236,14 +236,14 @@ class SCOT_CAM:
         # src_hyperfeatures = src_hyperpixels[1]
         # print(src_hyperfeatures)
         # print(src_hyperfeatures[src_hyperfeatures<0])
-
+       
         self.visualize_k_means(src_hyperpixels[1],C_self_src[:,:,0,0],k_list,n_rows)
         #visualize PCA results
         self.visualize_pca(src_hyperpixels[1],C_self_src[:,:,0,0],k_list,n_rows)
         #visualize NMF results
         self.visualize_nmf(src_hyperpixels[1],C_self_src[:,:,0,0],k_list,n_rows)
 
-        '''
+        
         """Visualize different sim with different backbone"""
         ##You can choose different backbones by changing the 'backbone' attribute and different similarity matrix by changing the 'sim' attribute
         sim = 'Correlation' #'OT','RHM'
@@ -298,18 +298,42 @@ class SCOT_CAM:
     def plot_selfsim_statistic(self, C, T, RHM, C_orisize, scr_image_with_rps):
         """Visualize the entropy, mean, sum, std of self-similarity C(C_2dim_selfsim) and T(OT_mat_selfsim) over axis =1 so that [HW*HW] --> [HW,1]"""
         print(C[C<0],T[T<0],RHM[RHM<0])
-        PC = F.softmax(C,dim=1)
+        ##Compute the entropy of C using its histogram
+
+
+        # PC = F.softmax(C,dim=1)
+        n_bins = 64
+        C_min = C.cpu().numpy().min()
+        C_max = C.cpu().numpy().max()
+        for i in range(C.shape[0]):
+            his = torch.histogram(C[i,:].cpu(),bins=n_bins,range=(C_min,C_max))
+            row_his = his.hist
+            row_his = row_his/row_his.sum()
+            row_his = row_his.view(1,-1)
+            # print(row_his.shape)
+            if i == 0:
+                C_his = row_his
+            else:
+                C_his = torch.cat((C_his,row_his),0)
+        # print(C_his.shape, C.shape)
+        assert(C_his.shape[0]==C.shape[0])
+
+
         PT = F.softmax(T,dim=1)
         PRHM = F.softmax(RHM,dim=1)
         # if activation == 'softmax':
         #     C = PC
         # elif activation == 'Relu':
         #     C =  F.relu(C,dim=1)
-        lnPC = torch.log(PC)
+
+        # lnPC = torch.log(PC)
+        lnC_his = torch.log(C_his+1e-20)
+
+
         lnPT = torch.log(PT)
         lnPRHM = torch.log(PRHM)
 
-        C_entropy = -torch.sum(PC*lnPC,dim =1)
+        C_entropy = -torch.sum(C_his*lnC_his,dim =1)/np.log(n_bins)
         T_entropy = -torch.sum(PT*lnPT,dim =1)
         RHM_entropy = -torch.sum(PRHM*lnPRHM,dim =1)
 
@@ -327,42 +351,42 @@ class SCOT_CAM:
 
 
         print(C_entropy,T_entropy,RHM_entropy)
-        print(T_entropy.max(),T_entropy.min())
+        # print(T_entropy.max(),T_entropy.min())
         # print(C_entropy.dtype,T_entropy.dtype,RHM_entropy.dtype)
-        C_entropy = C_entropy/C_entropy.max()
-        T_entropy = T_entropy/T_entropy.max()
-        RHM_entropy = RHM_entropy/RHM_entropy.max()
+        # C_entropy = C_entropy/C_entropy.max()
+        # T_entropy = T_entropy/T_entropy.max()
+        # RHM_entropy = RHM_entropy/RHM_entropy.max()
         # print(C_entropy.dtype,T_entropy.dtype,RHM_entropy.dtype)
         C_entropy = C_entropy.view_as(C_orisize)
         T_entropy = T_entropy.view_as(C_orisize)
         RHM_entropy = RHM_entropy.view_as(C_orisize)
-        print(C_entropy,T_entropy,RHM_entropy)
-        print(T_entropy.max(),T_entropy.min())
-        print(T_entropy.cpu().numpy().dtype)
+        # print(C_entropy,T_entropy,RHM_entropy)
+        # print(T_entropy.max(),T_entropy.min())
+        # print(T_entropy.cpu().numpy().dtype)
 
 
         C_mean = torch.mean(C,dim=1).view_as(C_orisize)
         T_mean = torch.mean(T,dim=1).view_as(C_orisize)
         RHM_mean = torch.mean(RHM,dim=1).view_as(C_orisize)
-        C_mean = C_mean/C_mean.max()
-        T_mean = T_mean/T_mean.max()
-        RHM_mean = RHM_mean/RHM_mean.max()
+        # C_mean = C_mean/C_mean.max()
+        # T_mean = T_mean/T_mean.max()
+        # RHM_mean = RHM_mean/RHM_mean.max()
 
         C_sum = torch.sum(C,dim=1).view_as(C_orisize)
         T_sum = torch.sum(T,dim=1).view_as(C_orisize)
         RHM_sum = torch.sum(RHM,dim=1).view_as(C_orisize)
-        C_sum = C_sum/C_sum.max()
-        T_sum = T_sum/T_sum.max()
-        RHM_sum = RHM_sum/RHM_sum.max()
+        # C_sum = C_sum/C_sum.max()
+        # T_sum = T_sum/T_sum.max()
+        # RHM_sum = RHM_sum/RHM_sum.max()
 
         print(T_mean, T_sum)
 
         C_std = torch.std(C,dim=1).view_as(C_orisize)
         T_std = torch.std(T,dim=1).view_as(C_orisize)
         RHM_std = torch.std(RHM,dim=1).view_as(C_orisize)
-        C_std = C_std/C_std.max()
-        T_std = T_std/T_std.max()
-        RHM_std = RHM_std/RHM_std.max()
+        # C_std = C_std/C_std.max()
+        # T_std = T_std/T_std.max()
+        # RHM_std = RHM_std/RHM_std.max()
 
         plt.figure(figsize=(3*3,3*5))
         plt.subplot(5,3,1)

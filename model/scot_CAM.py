@@ -28,8 +28,7 @@ def tensor_to_np(tensor):
     img = img.cpu().numpy().transpose((1, 2, 0))
     return img
 
-def show_from_cv(img, kps,title):
-    assert(type(title)==str)
+def show_from_cv(img, kps):
     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     # print(img.shape, kps)
     for i in range(kps.shape[1]):
@@ -108,8 +107,8 @@ class SCOT_CAM:
         target_image = self.detransform(args[1])
         scr_image = tensor_to_np(source_image)
         trg_image = tensor_to_np(target_image)
-        scr_image_with_rps = show_from_cv(scr_image,src_kps.cpu().numpy().astype(int),'source_image')
-        trg_image_with_rps = show_from_cv(trg_image,trg_kps.cpu().numpy().astype(int),'target_image')
+        scr_image_with_rps = show_from_cv(scr_image,src_kps.cpu().numpy().astype(int))
+        trg_image_with_rps = show_from_cv(trg_image,trg_kps.cpu().numpy().astype(int))
         #########
 
         src_hyperpixels = self.extract_hyperpixel(args[0], maptype, src_bbox, src_mask, backbone)
@@ -166,21 +165,6 @@ class SCOT_CAM:
             plt.imshow(confidence_ts_orisize[int(src_kps_feat[0][i]),int(src_kps_feat[1][i]),:,:].cpu().numpy())
         plt.savefig('/home/jianting/SCOT/visualization/all_three_matrices_cross_matrix')
 
-
-        
-        '''
-        plt.figure(1)
-        for i in range(num_kps):
-            plt.subplot(1,num_kps,i+1)
-            plt.imshow(C_mat[int(src_kps_feat[0][i]),int(src_kps_feat[1][i]),:,:].cpu().numpy())
-        plt.savefig('/home/jianting/SCOT/visualization/C_correspondence_src')
-
-        plt.figure(3)
-        for i in range(num_kps):
-            plt.subplot(1,num_kps,i+1)
-            plt.imshow(confidence_ts_orisize[int(src_kps_feat[0][i]),int(src_kps_feat[1][i]),:,:].cpu().numpy())
-        plt.savefig('/home/jianting/SCOT/visualization/RHM_confidence_src')
-        '''
 
 
         """Visualize self-similarity C"""
@@ -259,29 +243,120 @@ class SCOT_CAM:
 
         return confidence_ts, src_hyperpixels[0], trg_hyperpixels[0]
 
-    def visualize_sim(self,src_img,trg_img,maptype,src_bbox,trg_bbox,src_mask,trg_mask,exp1,exp2,eps,backbone="resnet101",sim='Correlation',simi='OT'):
+    def visualize_sim(self,sample,idx,maptype,exp1,exp2,eps,savepath,backbone="resnet101",sim='All',simi='OT',choice='cross'):
         """Given two images(src & trg), the backbone and the sim choice, visualize sim(backbone(src).T @ backbone(trg))"""
-        sim_list = ['Correlation','OT','RHM']
+        src_img = sample['src_img']
+        trg_img = sample['trg_img']
+        src_bbox = sample['src_bbox']
+        trg_bbox = sample['trg_bbox']
+        src_mask = sample['src_mask']
+        trg_mask = sample['trg_mask']
+        src_kps = sample['src_kps']
+        trg_kps = sample['trg_kps']
+        vis_idx = str(idx)
+        # print(src_kps.shape,trg_kps.shape)
+        # print(src_kps,trg_kps)
+        pair_class = sample['pair_class']
+        pair_classid = str(sample['pair_classid'])
+        sim_list = ['Correlation','OT','RHM','All']
         assert(sim in sim_list)
+        choice_list = ['cross','self']
+        assert(choice in choice_list)
         source_image = self.detransform(src_img)
         target_image = self.detransform(trg_img)
         scr_image = tensor_to_np(source_image)
         trg_image = tensor_to_np(target_image)
+        scr_image_with_rps = show_from_cv(scr_image, src_kps.cpu().numpy().astype(int))
+        trg_image_with_rps = show_from_cv(trg_image, trg_kps.cpu().numpy().astype(int))
+        src_kps_feat = src_kps/self.jsz[self.hyperpixel_ids[0]]
+        trg_kps_feat = trg_kps/self.jsz[self.hyperpixel_ids[0]]
+        num_kps = src_kps_feat.size()[1]
+
         src_hyperpixels = self.extract_hyperpixel(src_img, maptype, src_bbox, src_mask, backbone)
         trg_hyperpixels = self.extract_hyperpixel(trg_img, maptype, trg_bbox, trg_mask, backbone)
-        confidence_ts, OT_mat, C_2dim = rhm_map.rhm(src_hyperpixels, trg_hyperpixels, self.hsfilter, simi, exp1, exp2, eps)
-        visual_dic = {'Correlation':C_2dim, 'OT':OT_mat, 'RHM':confidence_ts}
-        plt.figure(figsize=(3*2,3*2))
-        plt.subplot(2,2,1)
-        plt.title('source image')
-        plt.imshow(scr_image)
-        plt.subplot(2,2,2)
-        plt.title('target image')
-        plt.imshow(trg_image)
-        plt.subplot(2,2,3)
-        plt.title(sim+'matrix')
-        plt.imshow(visual_dic[sim])
-        plt.savefig('/home/jianting/SCOT/visualization/'+backbone+''+sim+' matrix')
+        src_featmap = src_hyperpixels[-1]
+        trg_featmap = trg_hyperpixels[-1]
+
+        if choice == 'cross':
+            C_mat = torch.einsum('kij,kmn -> ijmn',(src_featmap,trg_featmap))/(torch.norm(src_featmap,2)*torch.norm(trg_featmap,2))
+            confidence_ts, OT_mat, C_2dim = rhm_map.rhm(src_hyperpixels, trg_hyperpixels, self.hsfilter, simi, exp1, exp2, eps)
+            confidence_ts_orisize = confidence_ts.view_as(C_mat)
+            OT_mat_orisize = OT_mat.view_as(C_mat)
+        else:
+            C_mat = torch.einsum('kij,kmn -> ijmn',(src_featmap,src_featmap))/(torch.norm(src_featmap,2)*torch.norm(src_featmap,2))
+            confidence_ts, OT_mat, C_2dim = rhm_map.rhm(src_hyperpixels, src_hyperpixels, self.hsfilter, simi, exp1, exp2, eps)
+            confidence_ts_orisize = confidence_ts.view_as(C_mat)
+            OT_mat_orisize = OT_mat.view_as(C_mat)
+        
+        visual_dic = {'Correlation':C_mat, 'OT':OT_mat_orisize, 'RHM':confidence_ts_orisize}
+        if sim == 'All':
+            plt.figure(figsize=(3*num_kps,3*4))
+            plt.subplot(4,num_kps,1)
+            plt.title('source image')
+            plt.axis('off')
+            plt.imshow(scr_image_with_rps)
+            plt.subplot(4,num_kps,2)
+            plt.title('target image')
+            plt.axis('off')
+            plt.imshow(trg_image_with_rps)
+            for i in range(num_kps):
+            ##Correlation matrix C
+                plt.subplot(4,num_kps,i+1+num_kps)
+                plt.title('Correlation matrix')
+                plt.axis('off')
+                plt.imshow(C_mat[int(min(max(src_kps_feat[0][i],0),C_mat.shape[0]-1)),\
+                    int(min(max(src_kps_feat[1][i],0),C_mat.shape[1]-1)),:,:].cpu().numpy())
+                plt.colorbar()
+                ##OT matrix T
+                plt.subplot(4,num_kps,i+1+2*num_kps)
+                plt.title('OT matrix')
+                plt.axis('off')
+                plt.imshow(OT_mat_orisize[int(min(max(src_kps_feat[0][i],0),OT_mat_orisize.shape[0]-1)),\
+                    int(min(max(src_kps_feat[1][i],0),OT_mat_orisize.shape[1]-1)),:,:].cpu().numpy()) 
+                plt.colorbar()
+                #RHM confidence
+                plt.subplot(4,num_kps,i+1+3*num_kps)
+                plt.title('RHM')
+                plt.axis('off')
+                plt.imshow(confidence_ts_orisize[int(min(max(src_kps_feat[0][i],0),confidence_ts_orisize.shape[0]-1)),\
+                    int(min(max(src_kps_feat[1][i],0),confidence_ts_orisize.shape[1]-1)),:,:].cpu().numpy())
+                plt.colorbar()
+            plt.savefig(savepath+pair_class+vis_idx+backbone+'all_three_matrices_'+choice+'_similarity')
+        else:
+            plt.figure(figsize=(3*num_kps,3*2))
+            plt.subplot(2,num_kps,1)
+            plt.title('source image')
+            plt.axis('off')
+            plt.imshow(scr_image_with_rps)
+            plt.subplot(2,num_kps,2)
+            plt.title('target image')
+            plt.axis('off')
+            plt.imshow(trg_image_with_rps)
+            for i in range(num_kps):
+            ##Correlation matrix C
+                plt.subplot(2,num_kps,i+1+num_kps)
+                plt.title(sim+' matrix')
+                plt.axis('off')
+                plt.imshow(visual_dic[sim][int(min(max(src_kps_feat[0][i],0),visual_dic[sim].shape[0]-1)),\
+                    int(min(max(src_kps_feat[1][i],0),visual_dic[sim].shape[1]-1)),:,:].cpu().numpy())
+                plt.colorbar()
+            plt.savefig(savepath+pair_class+vis_idx+backbone+sim+'_matrices_'+choice+'_similarity')
+
+
+
+
+
+        # plt.figure(figsize=(3*2,3*2))
+        # plt.subplot(2,2,1)
+        # plt.title('source image')
+        # plt.imshow(scr_image)
+        # plt.subplot(2,2,2)
+        # plt.title('target image')
+        # plt.imshow(trg_image)
+        # plt.subplot(2,2,3)
+        # plt.title(sim+'matrix')
+        # plt.imshow(visual_dic[sim])
+        # plt.savefig('/home/jianting/SCOT/visualization/'+backbone+''+sim+' matrix')
 
     def visualize_G(self, img, maptype, bbox, mask, k_list=[3,7,20,35], backbone="resnet101", f = 'KMeans'):
         f_list = ['KMeans','PCA','NMF']

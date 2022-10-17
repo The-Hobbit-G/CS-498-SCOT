@@ -9,7 +9,8 @@ except ImportError:
 
 __all__ = ['ResNet', 'resnet18', 'resnet34', 'resnet50', 'resnet101',
            'resnet152', 'resnext50_32x4d', 'resnext101_32x8d',
-           'wide_resnet50_2', 'wide_resnet101_2']
+           'wide_resnet50_2', 'wide_resnet101_2','resnet50_densecl_IM200ep',
+           'resnet101_densecl_IM200ep','resnet50_densecl_COCO1600ep']
 
 
 model_urls = {
@@ -247,13 +248,17 @@ def _resnet_densecl(arch, block, layers, pretrained, progress, **kwargs):
     resnet_backbone = ResNet(block, layers, **kwargs)
     if pretrained:
         pretrained_dict = torch.load(model_urls[arch])['state_dict']
-        resnet_backbone.avgpool = nn.Sequential()
-        resnet_backbone.fc = nn.Sequential()
+        resnet_dict = load_state_dict_from_url(model_urls[arch.split('_')[0]],progress=progress)
+        # resnet_backbone.avgpool = nn.Sequential()
+        # resnet_backbone.fc = nn.Sequential()
         # for name in resnet_backbone.state_dict():
         #     print(name)
-        print(len(resnet_backbone.state_dict()),len(pretrained_dict))
-        assert(len(resnet_backbone.state_dict())==len(pretrained_dict))
-        resnet_backbone.load_state_dict(pretrained_dict)
+        # print(len(resnet_backbone.state_dict()),len(pretrained_dict))
+        # assert(len(resnet_backbone.state_dict())==len(pretrained_dict))
+        for k,v in resnet_dict.items():
+            if k in pretrained_dict:
+                resnet_dict[k] = pretrained_dict[k]
+        resnet_backbone.load_state_dict(resnet_dict)
     return resnet_backbone
 
 

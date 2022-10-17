@@ -32,11 +32,14 @@ def tensor_to_np(tensor):
 def show_from_cv(img, kps):
     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     # print(img.shape, kps)
+    img_list = []
     for i in range(kps.shape[1]):
-        cv2.circle(img,(kps[0][i],kps[1][i]),3,(0,0,255),-1)
+        img_i = cv2.circle(img.copy(),(kps[0][i],kps[1][i]),3,(0,0,255),-1)
+        img_i = cv2.cvtColor(img_i, cv2.COLOR_RGB2BGR)
+        img_list.append(img_i)
     #cv2.imwrite('/home/jianting/SCOT/visualization/'+title+'.jpg',img)
-    img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-    return img
+    # img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+    return img_list
 
 
 class SCOT_CAM:
@@ -283,15 +286,17 @@ class SCOT_CAM:
         assert(sim in sim_list)
         choice_list = ['cross','self']
         assert(choice in choice_list)
+        src_kps_feat = src_kps/self.jsz[self.hyperpixel_ids[0]]
+        trg_kps_feat = trg_kps/self.jsz[self.hyperpixel_ids[0]]
+        num_kps = src_kps_feat.size()[1]
         source_image = self.detransform(src_img)
         target_image = self.detransform(trg_img)
         scr_image = tensor_to_np(source_image)
         trg_image = tensor_to_np(target_image)
-        scr_image_with_rps = show_from_cv(scr_image, src_kps.cpu().numpy().astype(int))
-        trg_image_with_rps = show_from_cv(trg_image, trg_kps.cpu().numpy().astype(int))
-        src_kps_feat = src_kps/self.jsz[self.hyperpixel_ids[0]]
-        trg_kps_feat = trg_kps/self.jsz[self.hyperpixel_ids[0]]
-        num_kps = src_kps_feat.size()[1]
+        scr_image_with_rps_list = show_from_cv(scr_image, src_kps.cpu().numpy().astype(int))
+        trg_image_with_rps_list = show_from_cv(trg_image, trg_kps.cpu().numpy().astype(int))
+        assert(len(scr_image_with_rps_list)==len(trg_image_with_rps_list)==num_kps)
+        
 
         src_hyperpixels = self.extract_hyperpixel(src_img, maptype, src_bbox, src_mask, backbone)
         trg_hyperpixels = self.extract_hyperpixel(trg_img, maptype, trg_bbox, trg_mask, backbone)
@@ -311,56 +316,76 @@ class SCOT_CAM:
         
         visual_dic = {'Correlation':C_mat, 'OT':OT_mat_orisize, 'RHM':confidence_ts_orisize}
         if sim == 'All':
-            plt.figure(figsize=(3*num_kps,3*4))
-            plt.subplot(4,num_kps,1)
-            plt.title('source image')
-            plt.axis('off')
-            plt.imshow(scr_image_with_rps)
-            plt.subplot(4,num_kps,2)
-            plt.title('target image')
-            plt.axis('off')
-            plt.imshow(trg_image_with_rps)
+            plt.figure(figsize=(3*num_kps,3*5))
+            # plt.subplot(4,num_kps,1)
+            # plt.title('source image')
+            # plt.axis('off')
+            # plt.imshow(scr_image_with_rps)
+            # plt.subplot(4,num_kps,2)
+            # plt.title('target image')
+            # plt.axis('off')
+            # plt.imshow(trg_image_with_rps)
             for i in range(num_kps):
             ##Correlation matrix C
-                plt.subplot(4,num_kps,i+1+num_kps)
+                plt.subplot(5,num_kps,i+1)
+                plt.title('source image')
+                plt.axis('off')
+                plt.imshow(scr_image_with_rps_list[i])
+
+                plt.subplot(5,num_kps,i+1+num_kps)
+                plt.title('target image')
+                plt.axis('off')
+                plt.imshow(trg_image_with_rps_list[i])
+
+                plt.subplot(5,num_kps,i+1+2*num_kps)
                 plt.title('Correlation matrix')
                 plt.axis('off')
                 plt.imshow(C_mat[int(min(max(src_kps_feat[0][i],0),C_mat.shape[0]-1)),\
                     int(min(max(src_kps_feat[1][i],0),C_mat.shape[1]-1)),:,:].cpu().numpy())
-                plt.colorbar()
+                # plt.colorbar()
                 ##OT matrix T
-                plt.subplot(4,num_kps,i+1+2*num_kps)
+                plt.subplot(5,num_kps,i+1+3*num_kps)
                 plt.title('OT matrix')
                 plt.axis('off')
                 plt.imshow(OT_mat_orisize[int(min(max(src_kps_feat[0][i],0),OT_mat_orisize.shape[0]-1)),\
                     int(min(max(src_kps_feat[1][i],0),OT_mat_orisize.shape[1]-1)),:,:].cpu().numpy()) 
-                plt.colorbar()
+                # plt.colorbar()
                 #RHM confidence
-                plt.subplot(4,num_kps,i+1+3*num_kps)
+                plt.subplot(5,num_kps,i+1+4*num_kps)
                 plt.title('RHM')
                 plt.axis('off')
                 plt.imshow(confidence_ts_orisize[int(min(max(src_kps_feat[0][i],0),confidence_ts_orisize.shape[0]-1)),\
                     int(min(max(src_kps_feat[1][i],0),confidence_ts_orisize.shape[1]-1)),:,:].cpu().numpy())
-                plt.colorbar()
+                # plt.colorbar()
             plt.savefig(savepath+pair_class+vis_idx+backbone+'_all_three_matrices_'+choice+'_similarity')
         else:
-            plt.figure(figsize=(3*num_kps,3*2))
-            plt.subplot(2,num_kps,1)
-            plt.title('source image')
-            plt.axis('off')
-            plt.imshow(scr_image_with_rps)
-            plt.subplot(2,num_kps,2)
-            plt.title('target image')
-            plt.axis('off')
-            plt.imshow(trg_image_with_rps)
+            plt.figure(figsize=(3*num_kps,3*3))
+            # plt.subplot(2,num_kps,1)
+            # plt.title('source image')
+            # plt.axis('off')
+            # plt.imshow(scr_image_with_rps)
+            # plt.subplot(2,num_kps,2)
+            # plt.title('target image')
+            # plt.axis('off')
+            # plt.imshow(trg_image_with_rps)
             for i in range(num_kps):
             ##Correlation matrix C
-                plt.subplot(2,num_kps,i+1+num_kps)
+                plt.subplot(3,num_kps,i+1)
+                plt.title('source image')
+                plt.axis('off')
+                plt.imshow(scr_image_with_rps_list[i])
+
+                plt.subplot(3,num_kps,i+1+num_kps)
+                plt.title('target image')
+                plt.axis('off')
+                plt.imshow(trg_image_with_rps_list[i])
+
+                plt.subplot(3,num_kps,i+1+2*num_kps)
                 plt.title(sim+' matrix')
                 plt.axis('off')
                 plt.imshow(visual_dic[sim][int(min(max(src_kps_feat[0][i],0),visual_dic[sim].shape[0]-1)),\
                     int(min(max(src_kps_feat[1][i],0),visual_dic[sim].shape[1]-1)),:,:].cpu().numpy())
-                plt.colorbar()
+                # plt.colorbar()
             plt.savefig(savepath+pair_class+vis_idx+backbone+'_'+sim+'_matrices_'+choice+'_similarity')
 
 

@@ -20,6 +20,7 @@ from . import util
 from . import rhm_map
 #from torchvision.models import resnet
 from . import resnet
+from . import simsiam
 from data.dataset import Normalize, UnNormalize
 
 
@@ -48,6 +49,10 @@ class SCOT_CAM:
             self.backbone = resnet.resnet50(pretrained=True).to(device)
             nbottlenecks = [3, 4, 6, 3]
 
+        elif backbone == 'resnet50_simsiam':
+            self.backbone = simsiam.resnet50_simsiam(pretrained=True).to(device)
+            nbottlenecks = [3, 4, 6, 3]
+
         elif backbone == 'resnet101':
             self.backbone = resnet.resnet101(pretrained=True).to(device)
             nbottlenecks = [3, 4, 23, 3]
@@ -57,6 +62,24 @@ class SCOT_CAM:
             if len(cam)==0:
                 self.backbone1 = gcv.models.get_fcn_resnet101_voc(pretrained=True).to(device)
                 self.backbone1.eval()
+            nbottlenecks = [3, 4, 23, 3]
+
+        elif backbone == 'resnet50_densecl_IN':
+            self.backbone = resnet.resnet50_densecl(pretrained=True,pretrained_dataset='ImageNet').to(device)
+            if len(cam)==0:
+                self.backbone1=self.backbone
+            nbottlenecks = [3, 4, 6, 3]
+
+        elif backbone == 'resnet50_densecl_COCO':
+            self.backbone = resnet.resnet50_densecl(pretrained=True,pretrained_dataset='COCO').to(device)
+            if len(cam)==0:
+                self.backbone1=self.backbone
+            nbottlenecks = [3, 4, 6, 3]
+
+        elif backbone == 'resnet101_densecl_IN':
+            self.backbone = resnet.resnet101_densecl(pretrained=True,pretrained_dataset='ImageNet').to(device)
+            if len(cam)==0:
+                self.backbone1=self.backbone
             nbottlenecks = [3, 4, 23, 3]
         else:
             raise Exception('Unavailable backbone: %s' % backbone)
@@ -69,7 +92,7 @@ class SCOT_CAM:
         # (the jump and receptive field sizes for 'fcn101' are heuristic values)
         self.hyperpixel_ids = util.parse_hyperpixel(hyperpixel_ids) #string -> int
         #self.jsz = jump size, self.rfsz = receptive field size
-        if backbone in ['resnet50', 'resnet101']:
+        if backbone in ['resnet50', 'resnet101','resnet50_simsiam','resnet50_densecl_IN','resnet50_densecl_COCO','resnet101_densecl_IN']:
             ##For ResNet the jump size(stride) in the feature map of the final convolutional layer is 16
             self.jsz = torch.tensor([4, 4, 4, 4, 8, 8, 8, 8, 16, 16]).to(device)
             self.rfsz = torch.tensor([11, 19, 27, 35, 43, 59, 75, 91, 107, 139]).to(device)
@@ -85,6 +108,7 @@ class SCOT_CAM:
         self.device = device
         self.benchmark = benchmark
         self.detransform = UnNormalize() ##For visualizing the imgs
+        print(self.backbone)
 
     def __call__(self, *args, **kwargs):
         r"""Forward pass"""
@@ -321,7 +345,7 @@ class SCOT_CAM:
                 plt.imshow(confidence_ts_orisize[int(min(max(src_kps_feat[0][i],0),confidence_ts_orisize.shape[0]-1)),\
                     int(min(max(src_kps_feat[1][i],0),confidence_ts_orisize.shape[1]-1)),:,:].cpu().numpy())
                 plt.colorbar()
-            plt.savefig(savepath+pair_class+vis_idx+backbone+'all_three_matrices_'+choice+'_similarity')
+            plt.savefig(savepath+pair_class+vis_idx+backbone+'_all_three_matrices_'+choice+'_similarity')
         else:
             plt.figure(figsize=(3*num_kps,3*2))
             plt.subplot(2,num_kps,1)
@@ -340,7 +364,7 @@ class SCOT_CAM:
                 plt.imshow(visual_dic[sim][int(min(max(src_kps_feat[0][i],0),visual_dic[sim].shape[0]-1)),\
                     int(min(max(src_kps_feat[1][i],0),visual_dic[sim].shape[1]-1)),:,:].cpu().numpy())
                 plt.colorbar()
-            plt.savefig(savepath+pair_class+vis_idx+backbone+sim+'_matrices_'+choice+'_similarity')
+            plt.savefig(savepath+pair_class+vis_idx+backbone+'_'+sim+'_matrices_'+choice+'_similarity')
 
 
 
@@ -618,10 +642,11 @@ class SCOT_CAM:
             ##Mind that the given mask is None in our case since we don't specify args.cam as shown in evaluate_map_CAM.py
             if mask is None:
                 # get CAM mask
-                if backbone=='fcn101':
+                if backbone in ['fcn101','resnet50_densecl_IN','resnet50_densecl_COCO','resnet101_densecl_IN']:
                     mask = self.get_FCN_map(img.unsqueeze(0), feat_map, fc, sz=(img.size(1),img.size(2)))
                 else:
-                    mask = self.get_CAM_multi(img.unsqueeze(0), feat_map, fc, sz=(img.size(1),img.size(2)), top_k=2)
+                    #adding an backbone attribute to determin the generation of CAM(using different fully connection layers)
+                    mask = self.get_CAM_multi(backbone, img.unsqueeze(0), feat_map, fc, sz=(img.size(1),img.size(2)), top_k=2)
                 scale = 1.0
             else:
                 scale = 255.0
@@ -681,7 +706,7 @@ class SCOT_CAM:
 
         # GAP feature map
         feat_map = feat
-        if backbone!='fcn101':
+        if backbone not in ['fcn101','resnet50_densecl_IN','resnet50_densecl_COCO','resnet101_densecl_IN']:
             x = self.backbone.avgpool(feat)
             x = torch.flatten(x, 1)
             fc = self.backbone.fc(x)
@@ -726,12 +751,13 @@ class SCOT_CAM:
         return output_cam
 
 
-    def get_CAM_multi(self, img, feat_map, fc, sz, top_k=2):
-        # [img_h,img_w] = img.size()
+    def get_CAM_multi(self, backbone, img, feat_map, fc, sz, top_k=2):
+        img_h,img_w = img.size(1),img.size(2)
         scales = [1.0,1.5,2.0]
         map_list = []
         for scale in scales:
             if scale>1.0:
+                #in our case, there won't be scale*scale*sz[0]*sz[1] > 800*800
                 if scale*scale*sz[0]*sz[1] > 800*800:
                     scale = min(800/img_h,800/img_w)
                     scale = min(1.5,scale)
@@ -745,7 +771,10 @@ class SCOT_CAM:
 
             output_cam = []
             for label in pred_labels:
-                cam = self.backbone.fc.weight[label,:].unsqueeze(0).mm(feat_map.view(nc,h*w))
+                if backbone == 'resnet50_simsiam':
+                    cam = self.backbone.fc[0].weight[label,:].unsqueeze(0).mm(feat_map.view(nc,h*w))
+                else:
+                    cam = self.backbone.fc.weight[label,:].unsqueeze(0).mm(feat_map.view(nc,h*w))
                 cam = cam.view(1,1,h,w)
                 cam = F.interpolate(cam, (sz[0],sz[1]), None, 'bilinear', True)[0,0] # HxW
                 cam = (cam-cam.min()) / cam.max()
@@ -774,9 +803,11 @@ class SCOT_CAM:
                 scale = 1.5
             img = F.interpolate(img, (int(scale*sz[0]),int(scale*sz[1])), None, 'bilinear', True) # 1x3xHxW
             #feat_map, fc = self.extract_intermediate_feat(img,return_hp=False,backbone='fcn101')
-            feat_map = self.backbone1.evaluate(img)
+            # feat_map = self.backbone1.evaluate(img)
+            feat_map = self.backbone.get_final_fp(img)
+            print('FCN feature map size: {}'.format(feat_map.shape))
             
-            predict = torch.max(feat_map, 1)[1]
+            predict = torch.max(feat_map, 1)[1] #[1] means get the indices of all the max values(from the torch.return_types.max)
             mask = predict-torch.min(predict)
             mask_map = mask / torch.max(mask)
             mask_map = F.interpolate(mask_map.unsqueeze(0).double(), (sz[0],sz[1]), None, 'bilinear', True)[0,0] # HxW

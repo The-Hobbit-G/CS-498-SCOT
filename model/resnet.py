@@ -22,6 +22,9 @@ model_urls = {
     'resnext101_32x8d': 'https://download.pytorch.org/models/resnext101_32x8d-8ba56ff5.pth',
     'wide_resnet50_2': 'https://download.pytorch.org/models/wide_resnet50_2-95faca4d.pth',
     'wide_resnet101_2': 'https://download.pytorch.org/models/wide_resnet101_2-32ee1156.pth',
+    'resnet50_densecl_IM200ep': '/home/jianting/SCOT/model/pretrained/densecl_r50_imagenet_200ep.pth',
+    'resnet101_densecl_IM200ep': '/home/jianting/SCOT/model/pretrained/densecl_r101_imagenet_200ep.pth',
+    'resnet50_densecl_COCO1600ep': '/home/jianting/SCOT/model/pretrained/densecl_r50_coco_1600ep.pth',
 }
 
 
@@ -215,6 +218,19 @@ class ResNet(nn.Module):
 
         return x
 
+    def get_final_fp(self, x):
+        x = self.conv1(x)
+        x = self.bn1(x)
+        x = self.relu(x)
+        x = self.maxpool(x)
+
+        x = self.layer1(x)
+        x = self.layer2(x)
+        x = self.layer3(x)
+        x = self.layer4(x)
+
+        return x
+
     # Allow for accessing forward method in a inherited class
     forward = _forward
 
@@ -226,6 +242,19 @@ def _resnet(arch, block, layers, pretrained, progress, **kwargs):
                                               progress=progress)
         model.load_state_dict(state_dict)
     return model
+
+def _resnet_densecl(arch, block, layers, pretrained, progress, **kwargs):
+    resnet_backbone = ResNet(block, layers, **kwargs)
+    if pretrained:
+        pretrained_dict = torch.load(model_urls[arch])['state_dict']
+        resnet_backbone.avgpool = nn.Sequential()
+        resnet_backbone.fc = nn.Sequential()
+        # for name in resnet_backbone.state_dict():
+        #     print(name)
+        print(len(resnet_backbone.state_dict()),len(pretrained_dict))
+        assert(len(resnet_backbone.state_dict())==len(pretrained_dict))
+        resnet_backbone.load_state_dict(pretrained_dict)
+    return resnet_backbone
 
 
 def resnet18(pretrained=False, progress=True, **kwargs):
@@ -262,6 +291,23 @@ def resnet50(pretrained=False, progress=True, **kwargs):
     """
     return _resnet('resnet50', Bottleneck, [3, 4, 6, 3], pretrained, progress,
                    **kwargs)
+                   
+def resnet50_densecl(pretrained=True, progress=True, pretrained_dataset='ImageNet', **kwargs):
+    r"""ResNet-50 model from
+    `"Deep Residual Learning for Image Recognition" <https://arxiv.org/pdf/1512.03385.pdf>`_
+
+    Args:
+        pretrained (bool): If True, returns a model pre-trained on ImageNet or COCO
+        pretrained_dataset (str): 'ImageNet' or 'COCO', determines which pretrained_dataset to use
+        progress (bool): If True, displays a progress bar of the download to stderr
+    """
+    if pretrained_dataset == 'ImageNet':
+        return _resnet_densecl('resnet50_densecl_IM200ep', Bottleneck, [3, 4, 6, 3], pretrained, progress,
+                   **kwargs)
+    else:
+        return _resnet_densecl('resnet50_densecl_COCO1600ep', Bottleneck, [3, 4, 6, 3], pretrained, progress,
+                   **kwargs)
+    
 
 
 def resnet101(pretrained=False, progress=True, **kwargs):
@@ -274,6 +320,20 @@ def resnet101(pretrained=False, progress=True, **kwargs):
     """
     return _resnet('resnet101', Bottleneck, [3, 4, 23, 3], pretrained, progress,
                    **kwargs)
+
+def resnet101_densecl(pretrained=True, progress=True, **kwargs):
+    r"""ResNet-50 model from
+    `"Deep Residual Learning for Image Recognition" <https://arxiv.org/pdf/1512.03385.pdf>`_
+
+    Args:
+        pretrained (bool): If True, returns a model pre-trained on ImageNet or COCO
+        pretrained_dataset (str): 'ImageNet' or 'COCO', determines which pretrained_dataset to use
+        progress (bool): If True, displays a progress bar of the download to stderr
+    """
+
+    return _resnet_densecl('resnet101_densecl_IM200ep', Bottleneck, [3, 4, 23, 3], pretrained, progress,
+                   **kwargs)
+
 
 
 def resnet152(pretrained=False, progress=True, **kwargs):

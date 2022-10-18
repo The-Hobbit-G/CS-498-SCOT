@@ -1,4 +1,4 @@
-r"""Visualize different similarity matrices(C,OT,RHM) based on different backbones"""
+r"""Visualize different factorization methods(PCA,NMF,Kmeans) based on different backbones"""
 
 import argparse
 from audioop import cross
@@ -11,14 +11,14 @@ from torch.utils.data import DataLoader
 import torch
 import torch.nn.functional as F
 
-from model import scot_CAM, geometry, evaluation, util
+from model import scot_CAM, util
 from data import dataset, download
 
 import numpy as np
 
 
 def run(datapath, benchmark, backbone, thres, alpha, hyperpixel,
-        logpath, visual_idx, visual_mat, choice, args, beamsearch=False, model=None, dataloader=None):
+        logpath, visual_idx, factorization, choice, klist, args, beamsearch=False, model=None, dataloader=None):
     r"""Runs Semantic Correspondence as an Optimal Transport Problem"""
 
     # 1. Logging initialization
@@ -71,13 +71,15 @@ def run(datapath, benchmark, backbone, thres, alpha, hyperpixel,
 
     data['alpha'] = alpha
 
-    savepath = '/home/jianting/SCOT/visualization/sim_example/'
-    visual_mat_list = ['Correlation' ,'OT','RHM','All']
-    assert(visual_mat in visual_mat_list)
-    choice_list = ['cross','self']
+    savepath = '/home/jianting/SCOT/visualization/Gmat_example/'
+    factorization_list = ['PCA' ,'NMF','KMeans','All']
+    assert(factorization in factorization_list)
+    choice_list = ['src','trg']
     assert(choice in choice_list)
+    klist = util.parse_hyperpixel(klist)
+    # k_list = [4,9,16,25,36]
     with torch.no_grad():
-        model.visualize_sim(data, visual_idx, args.classmap, args.exp1, args.exp2, args.eps, savepath, backbone, visual_mat, args.sim, choice)
+        model.visualize_G(data, visual_idx, args.classmap, savepath, klist, backbone, factorization, choice)
         # conf, trg_indices = torch.max(confidence_ts, dim=1)
         # unique, inv = torch.unique(trg_indices, sorted=False, return_inverse=True)
         # trgpt_list.append(len(unique))
@@ -99,8 +101,9 @@ if __name__ == '__main__':
     parser.add_argument('--logpath', type=str, default='')
     parser.add_argument('--split', type=str, default='test', help='trn,val.test')
     parser.add_argument('--visual_idx',type=int,default=0, help='index of the image pair you want to visualize')
-    parser.add_argument('--visual_mat',type=str,default='All',help='Choose the similarity matrix you want to visualize, Correlation,OT,or RHM')
-    parser.add_argument('--choice',type=str,default='cross', help='Choice for visualizing cross or self similarity')
+    parser.add_argument('--facorization',type=str,default='All',help='Choose the factorization methods you want to visualize, PCA,NMF,or Kmeans')
+    parser.add_argument('--choice',type=str,default='src', help='Choice for visualizing cross or self similarity')
+    parser.add_argument('--klist',type=str,default='(4,9,16,25,36)', help='dimension of the factorized matrix M (X=L@M.T)')
 
     # Algorithm parameters
     parser.add_argument('--sim', type=str, default='OTGeo', help='Similarity type: OT, OTGeo, cos, cosGeo')
@@ -114,6 +117,7 @@ if __name__ == '__main__':
     os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
 
     run(datapath=args.datapath, benchmark=args.dataset, backbone=args.backbone, thres=args.thres,
-        alpha=args.alpha, hyperpixel=args.hyperpixel, logpath=args.logpath, visual_idx=args.visual_idx, visual_mat=args.visual_mat, choice=args.choice, args=args, beamsearch=False)
+        alpha=args.alpha, hyperpixel=args.hyperpixel, logpath=args.logpath, visual_idx=args.visual_idx, 
+        factorization=args.facorization, choice=args.choice, klist=args.klist, args=args, beamsearch=False)
 
     util.log_args(args)

@@ -404,16 +404,124 @@ class SCOT_CAM:
         # plt.imshow(visual_dic[sim])
         # plt.savefig('/home/jianting/SCOT/visualization/'+backbone+''+sim+' matrix')
 
-    def visualize_G(self, img, maptype, bbox, mask, k_list=[3,7,20,35], backbone="resnet101", f = 'KMeans'):
-        f_list = ['KMeans','PCA','NMF']
+    def visualize_G(self, sample, visual_idx, maptype, savepath, k_list=[3,7,20,35], backbone="resnet101", f = 'KMeans', choice='src'):
+        src_img = sample['src_img']
+        trg_img = sample['trg_img']
+        src_bbox = sample['src_bbox']
+        trg_bbox = sample['trg_bbox']
+        src_mask = sample['src_mask']
+        trg_mask = sample['trg_mask']
+        pair_class = sample['pair_class']
+        vis_idx = str(visual_idx)
+        f_list = ['PCA' ,'NMF','KMeans','All']
         assert(f in f_list)
-        hyperpixels = self.extract_hyperpixel(img, maptype, bbox, mask, backbone)
-        if f == 'KMeans':
-            self.visualize_k_means(hyperpixels[1],k_list)
-        elif f == 'PCA':
-            self.visualize_pca(hyperpixels[1],k_list)
+        choice_list = ['src','trg']
+        assert(choice in choice_list)
+        num_k = len(k_list)
+        if choice == 'src':
+            hyperpixels = self.extract_hyperpixel(src_img, maptype, src_bbox, src_mask, backbone)
+        elif choice == 'trg':
+            hyperpixels = self.extract_hyperpixel(trg_img, maptype, trg_bbox, trg_mask, backbone)
         else:
-            self.visualize_nmf(hyperpixels[1],k_list)
+            raise Exception('image not in src or trg')
+
+        hyperfeat_orisize = hyperpixels[-1]
+        n_rows = [int(i**0.5) for i in k_list]
+        
+        if f == 'KMeans':
+            GT_list_kmeans = self.visualize_k_means(hyperpixels[1],hyperfeat_orisize[0,:,:],k_list)
+            for i in range(num_k):
+                img_grid = torchvision.utils.make_grid(GT_list_kmeans[i],n_rows[i])
+                torchvision.utils.save_image(img_grid,savepath+pair_class+vis_idx+'_'+choice+'_'+backbone+'_G_mat_k_means_k={}.jpg'.format(k_list[i]))
+        elif f == 'PCA':
+            GT_list_pca = self.visualize_pca(hyperpixels[1],hyperfeat_orisize[0,:,:],k_list)
+            for i in range(num_k):
+                img_grid = torchvision.utils.make_grid(GT_list_pca[i],n_rows[i])
+                torchvision.utils.save_image(img_grid,savepath+pair_class+vis_idx+'_'+choice+'_'+backbone+'_G_mat_pca_k={}.jpg'.format(k_list[i]))
+        elif f == 'NMF':
+            GT_list_nmf = self.visualize_nmf(hyperpixels[1],hyperfeat_orisize[0,:,:],k_list)
+            for i in range(num_k):
+                img_grid = torchvision.utils.make_grid(GT_list_nmf[i],n_rows[i])
+                torchvision.utils.save_image(img_grid,savepath+pair_class+vis_idx+'_'+choice+'_'+backbone+'_G_mat_nmf_k={}.jpg'.format(k_list[i]))
+        elif f == 'All':
+            GT_list_kmeans = self.visualize_k_means(hyperpixels[1],hyperfeat_orisize[0,:,:],k_list)
+            GT_list_pca = self.visualize_pca(hyperpixels[1],hyperfeat_orisize[0,:,:],k_list)
+            GT_list_nmf = self.visualize_nmf(hyperpixels[1],hyperfeat_orisize[0,:,:],k_list)
+            for i in range(num_k):
+                kmeans_grid = torchvision.utils.make_grid(GT_list_kmeans[i],n_rows[i])
+                kmeans_grid = kmeans_grid.cpu().numpy()
+
+    def visualize_k_means(self, hyperfeats, C_orisize, k_list):
+        num_k = len(k_list)
+        hyperfeats = hyperfeats.cpu().numpy()
+        C_orisize = C_orisize.cpu().numpy()
+        GT_list = []
+        for k in k_list:
+            km = KMeans(n_clusters=k).fit(hyperfeats)
+            # print(km.cluster_centers_,km.cluster_centers_.shape)
+            # G = hyperfeats@np.linalg.pinv(km.cluster_centers_)
+            # print(G)
+            # G_list.append(G)
+            GT = np.zeros((k,hyperfeats.shape[0])) #GT shape:k*HW
+            assert(hyperfeats.shape[0]==km.labels_.shape[0])
+            for label in range(km.labels_.shape[0]):
+                GT[km.labels_[label],label]=1
+            # print(GT)
+            GT = torch.from_numpy(GT.reshape(k,1,C_orisize.shape[0],C_orisize.shape[1]))
+            GT_list.append(GT)
+        assert(len(GT_list)==num_k)
+        # plt.figure()
+        # for i in range(num_k):
+        #     img_grid = torchvision.utils.make_grid(GT_list[i],n_rows[i])
+        #     torchvision.utils.save_image(img_grid,'/home/jianting/SCOT/visualization/G_mat_k_means_k={}.jpg'.format(k_list[i]))
+        return GT_list
+
+    def visualize_pca(self, hyperfeats, C_orisize, k_list):
+        num_k = len(k_list)
+        hyperfeats = hyperfeats.cpu().numpy()
+        C_orisize = C_orisize.cpu().numpy()
+        GT_list = []
+        for k in k_list:
+            pca = PCA(n_components=k)
+            # pca.fit(hyperfeats)
+            # G = pca.transform(hyperfeats)
+            # singular_values = pca.singular_values_
+            # print(singular_values)
+            # print(G)
+            G = pca.fit_transform(hyperfeats) #G shape: HW*k
+            # GT = torch.from_numpy(G.T.reshape(k,1,C_orisize.shape[0],C_orisize.shape[1]))
+            GT = G.T.reshape(k,C_orisize.shape[0],C_orisize.shape[1])
+            GT_rgb = np.zeros((k,3,C_orisize.shape[0],C_orisize.shape[1]))
+            for i in range(k):
+                #illustrate negative values in red and positive values in blue
+                GT_rgb[i,0,:,:] = np.abs(np.minimum(GT[i,:,:],0))
+                GT_rgb[i,2,:,:] = np.maximum(GT[i,:,:],0)
+            # print(GT)
+            GT_list.append(torch.from_numpy(GT_rgb))
+        assert(len(GT_list)==num_k)
+        # plt.figure()
+        # for i in range(num_k):
+        #     img_grid = torchvision.utils.make_grid(GT_list[i],n_rows[i])
+        #     torchvision.utils.save_image(img_grid,'/home/jianting/SCOT/visualization/G_mat_pca_k={}.jpg'.format(k_list[i]))
+        return GT_list
+
+    def visualize_nmf(self, hyperfeats, C_orisize, k_list):
+        num_k = len(k_list)
+        hyperfeats = F.relu(hyperfeats)
+        hyperfeats = hyperfeats.cpu().numpy()
+        C_orisize = C_orisize.cpu().numpy()
+        GT_list = []
+        for k in k_list:
+            nmf = NMF(n_components=k)
+            G = nmf.fit_transform(hyperfeats) #G shape: HW*k
+            GT = torch.from_numpy(G.T.reshape(k,1,C_orisize.shape[0],C_orisize.shape[1]))
+            GT_list.append(GT)
+        assert(len(GT_list)==num_k)
+        # plt.figure()
+        # for i in range(num_k):
+        #     img_grid = torchvision.utils.make_grid(GT_list[i],n_rows[i])
+        #     torchvision.utils.save_image(img_grid,'/home/jianting/SCOT/visualization/G_mat_nmf_k={}.jpg'.format(k_list[i]))
+        return GT_list
 
 
     def plot_selfsim_statistic(self, C, T, RHM, C_orisize, scr_image_with_rps):
@@ -579,69 +687,6 @@ class SCOT_CAM:
         plt.imshow(RHM_std.cpu().numpy())
         plt.colorbar()
         plt.savefig('/home/jianting/SCOT/visualization/self_similarity_statistics')
-
-    def visualize_k_means(self, hyperfeats, C_orisize, k_list,n_rows = [2,3,4,5,6]):
-        num_k = len(k_list)
-        hyperfeats = hyperfeats.cpu().numpy()
-        C_orisize = C_orisize.cpu().numpy()
-        GT_list = []
-        for k in k_list:
-            km = KMeans(n_clusters=k).fit(hyperfeats)
-            # print(km.cluster_centers_,km.cluster_centers_.shape)
-            # G = hyperfeats@np.linalg.pinv(km.cluster_centers_)
-            # print(G)
-            # G_list.append(G)
-            GT = np.zeros((k,hyperfeats.shape[0])) #GT shape:k*HW
-            assert(hyperfeats.shape[0]==km.labels_.shape[0])
-            for label in range(km.labels_.shape[0]):
-                GT[km.labels_[label],label]=1
-            # print(GT)
-            GT = torch.from_numpy(GT.reshape(k,1,C_orisize.shape[0],C_orisize.shape[1]))
-            GT_list.append(GT)
-        assert(len(GT_list)==num_k)
-        plt.figure()
-        for i in range(num_k):
-            img_grid = torchvision.utils.make_grid(GT_list[i],n_rows[i])
-            torchvision.utils.save_image(img_grid,'/home/jianting/SCOT/visualization/G_mat_k_means_k={}.jpg'.format(k_list[i]))
-
-    def visualize_pca(self, hyperfeats, C_orisize, k_list,n_rows = [1,2,4,6]):
-        num_k = len(k_list)
-        hyperfeats = hyperfeats.cpu().numpy()
-        C_orisize = C_orisize.cpu().numpy()
-        GT_list = []
-        for k in k_list:
-            pca = PCA(n_components=k)
-            G = pca.fit_transform(hyperfeats) #G shape: HW*k
-            GT = torch.from_numpy(G.T.reshape(k,1,C_orisize.shape[0],C_orisize.shape[1]))
-            GT_list.append(GT)
-        assert(len(GT_list)==num_k)
-        plt.figure()
-        for i in range(num_k):
-            img_grid = torchvision.utils.make_grid(GT_list[i],n_rows[i])
-            torchvision.utils.save_image(img_grid,'/home/jianting/SCOT/visualization/G_mat_pca_k={}.jpg'.format(k_list[i]))
-
-    def visualize_nmf(self, hyperfeats, C_orisize, k_list,n_rows = [1,2,4,6]):
-        num_k = len(k_list)
-        hyperfeats = F.relu(hyperfeats)
-        hyperfeats = hyperfeats.cpu().numpy()
-        C_orisize = C_orisize.cpu().numpy()
-        GT_list = []
-        for k in k_list:
-            nmf = NMF(n_components=k)
-            G = nmf.fit_transform(hyperfeats) #G shape: HW*k
-            GT = torch.from_numpy(G.T.reshape(k,1,C_orisize.shape[0],C_orisize.shape[1]))
-            GT_list.append(GT)
-        assert(len(GT_list)==num_k)
-        plt.figure()
-        for i in range(num_k):
-            img_grid = torchvision.utils.make_grid(GT_list[i],n_rows[i])
-            torchvision.utils.save_image(img_grid,'/home/jianting/SCOT/visualization/G_mat_nmf_k={}.jpg'.format(k_list[i]))
-
-        
-
-
-
-
 
 
     def extract_hyperpixel(self, img, maptype, bbox, mask, backbone="resnet101"):

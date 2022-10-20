@@ -6,7 +6,7 @@ from operator import add
 import torch.nn.functional as F
 import torch
 import torchvision.utils
-import gluoncvth as gcv
+# import gluoncvth as gcv
 import numpy as np
 import copy
 import cv2
@@ -22,6 +22,7 @@ from . import rhm_map
 from . import resnet
 from . import simsiam
 from data.dataset import Normalize, UnNormalize
+from scipy.optimize import linear_sum_assignment
 
 
 def tensor_to_np(tensor):
@@ -37,7 +38,7 @@ def show_from_cv(img, kps):
         img_i = cv2.circle(img.copy(),(kps[0][i],kps[1][i]),3,(0,0,255),-1)
         img_i = cv2.cvtColor(img_i, cv2.COLOR_RGB2BGR)
         img_list.append(img_i)
-    #cv2.imwrite('/home/jianting/SCOT/visualization/'+title+'.jpg',img)
+    #cv2.imwrite('/sinergia/2022-fall-sp-jiguo/SCOT/visualization/'+title+'.jpg',img)
     # img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
     return img_list
 
@@ -152,7 +153,7 @@ class SCOT_CAM:
         for i in range(trg_kps_feat.size()[1]):
             plt.subplot(1,trg_kps_feat.size()[1],i+1)
             plt.imshow(C_mat_trg[int(trg_kps_feat[0][i]),int(trg_kps_feat[1][i]),:,:].cpu().numpy())
-        plt.savefig('/home/jianting/SCOT/visualization/C_correspondence_trg')
+        plt.savefig('/sinergia/2022-fall-sp-jiguo/SCOT/visualization/C_correspondence_trg')
         '''
 
         """Visualize cross-similarity OT matrix T and p(m|D) after RHM"""
@@ -186,7 +187,7 @@ class SCOT_CAM:
             plt.subplot(4,num_kps,i+1+3*num_kps)
             plt.title('RHM')
             plt.imshow(confidence_ts_orisize[int(src_kps_feat[0][i]),int(src_kps_feat[1][i]),:,:].cpu().numpy())
-        plt.savefig('/home/jianting/SCOT/visualization/all_three_matrices_cross_matrix')
+        plt.savefig('/sinergia/2022-fall-sp-jiguo/SCOT/visualization/all_three_matrices_cross_matrix')
 
 
 
@@ -224,7 +225,7 @@ class SCOT_CAM:
             plt.subplot(4,num_kps,i+1+3*num_kps)
             plt.title('RHM')
             plt.imshow(confidence_ts_selfsim_orisize[int(src_kps_feat[0][i]),int(src_kps_feat[1][i]),:,:].cpu().numpy())
-        plt.savefig('/home/jianting/SCOT/visualization/all_three_matrices_self_similarity')
+        plt.savefig('/sinergia/2022-fall-sp-jiguo/SCOT/visualization/all_three_matrices_self_similarity')
         '''
 
 
@@ -390,20 +391,6 @@ class SCOT_CAM:
 
 
 
-
-
-        # plt.figure(figsize=(3*2,3*2))
-        # plt.subplot(2,2,1)
-        # plt.title('source image')
-        # plt.imshow(scr_image)
-        # plt.subplot(2,2,2)
-        # plt.title('target image')
-        # plt.imshow(trg_image)
-        # plt.subplot(2,2,3)
-        # plt.title(sim+'matrix')
-        # plt.imshow(visual_dic[sim])
-        # plt.savefig('/home/jianting/SCOT/visualization/'+backbone+''+sim+' matrix')
-
     def visualize_G(self, sample, visual_idx, maptype, savepath, k_list=[3,7,20,35], backbone="resnet101", f = 'KMeans', choice='src'):
         src_img = sample['src_img']
         trg_img = sample['trg_img']
@@ -429,58 +416,101 @@ class SCOT_CAM:
         n_rows = [int(i**0.5) for i in k_list]
         
         if f == 'KMeans':
-            GT_list_kmeans = self.visualize_k_means(hyperpixels[1],hyperfeat_orisize[0,:,:],k_list)
+            L_list_kmeans,GT_list_kmeans = self.visualize_k_means(hyperpixels[1],hyperfeat_orisize[0,:,:],k_list)
             for i in range(num_k):
-                img_grid = torchvision.utils.make_grid(GT_list_kmeans[i],n_rows[i])
+                img_grid = torchvision.utils.make_grid(torch.from_numpy(GT_list_kmeans[i]),n_rows[i])
                 torchvision.utils.save_image(img_grid,savepath+pair_class+vis_idx+'_'+choice+'_'+backbone+'_G_mat_k_means_k={}.jpg'.format(k_list[i]))
         elif f == 'PCA':
-            GT_list_pca = self.visualize_pca(hyperpixels[1],hyperfeat_orisize[0,:,:],k_list)
+            L_list_pca,GT_list_pca = self.visualize_pca(hyperpixels[1],hyperfeat_orisize[0,:,:],k_list)
             for i in range(num_k):
-                img_grid = torchvision.utils.make_grid(GT_list_pca[i],n_rows[i])
+                img_grid = torchvision.utils.make_grid(torch.from_numpy(GT_list_pca[i]),n_rows[i])
                 torchvision.utils.save_image(img_grid,savepath+pair_class+vis_idx+'_'+choice+'_'+backbone+'_G_mat_pca_k={}.jpg'.format(k_list[i]))
         elif f == 'NMF':
-            GT_list_nmf = self.visualize_nmf(hyperpixels[1],hyperfeat_orisize[0,:,:],k_list)
+            L_list_nmf,GT_list_nmf = self.visualize_nmf(hyperpixels[1],hyperfeat_orisize[0,:,:],k_list)
             for i in range(num_k):
-                img_grid = torchvision.utils.make_grid(GT_list_nmf[i],n_rows[i])
+                img_grid = torchvision.utils.make_grid(torch.from_numpy(GT_list_nmf[i]),n_rows[i])
                 torchvision.utils.save_image(img_grid,savepath+pair_class+vis_idx+'_'+choice+'_'+backbone+'_G_mat_nmf_k={}.jpg'.format(k_list[i]))
         elif f == 'All':
-            GT_list_kmeans = self.visualize_k_means(hyperpixels[1],hyperfeat_orisize[0,:,:],k_list)
-            GT_list_pca = self.visualize_pca(hyperpixels[1],hyperfeat_orisize[0,:,:],k_list)
-            GT_list_nmf = self.visualize_nmf(hyperpixels[1],hyperfeat_orisize[0,:,:],k_list)
+            L_list_kmeans,GT_list_kmeans = self.visualize_k_means(hyperpixels[1],hyperfeat_orisize[0,:,:],k_list)
+            L_list_pca,GT_list_pca = self.visualize_pca(hyperpixels[1],hyperfeat_orisize[0,:,:],k_list)
+            L_list_nmf,GT_list_nmf = self.visualize_nmf(hyperpixels[1],hyperfeat_orisize[0,:,:],k_list)
             for i in range(num_k):
-                kmeans_grid = torchvision.utils.make_grid(GT_list_kmeans[i],n_rows[i])
-                kmeans_grid = kmeans_grid.cpu().numpy()
+                # kmeans_grid = torchvision.utils.make_grid(GT_list_kmeans[i],n_rows[i])
+                # kmeans_grid = kmeans_grid.cpu().numpy()
+                Li_kmeans = L_list_kmeans[i]
+                Li_pca = L_list_pca[i]
+                Li_nmf = L_list_nmf[i]
+                #correlation matrix L1.T@L2-->k*k matrix
+                C_pca_kmeas = Li_pca.T@Li_kmeans
+                C_pca_nmf = Li_pca.T@Li_nmf
+                row_ind_pca_kmeans, col_ind_pca_kmeans = linear_sum_assignment(C_pca_kmeas)
+                row_ind_pca_nmf, col_ind_pca_nmf = linear_sum_assignment(C_pca_nmf)
+                GT_list_kmeans[i] = GT_list_kmeans[i][col_ind_pca_kmeans,:]
+                GT_list_nmf[i] = GT_list_nmf[i][col_ind_pca_nmf,:]
+                
+                pca_grid = torchvision.utils.make_grid(torch.from_numpy(GT_list_pca[i]),n_rows[i]).permute(1,2,0)
+                kmeans_grid = torchvision.utils.make_grid(torch.from_numpy(GT_list_kmeans[i]),n_rows[i]).permute(1,2,0)
+                nmf_grid = torchvision.utils.make_grid(torch.from_numpy(GT_list_nmf[i]),n_rows[i]).permute(1,2,0)
+                pca_grid = pca_grid.numpy().astype(np.float64)
+                kmeans_grid = kmeans_grid.numpy().astype(np.float64)
+                nmf_grid = nmf_grid.numpy().astype(np.float64)
+                plt.figure(figsize=(4*3,4))
+                plt.subplot(1,3,1)
+                plt.title('G_mat with PCA factorization')
+                plt.axis('off')
+                plt.imshow(pca_grid)
+                plt.subplot(1,3,2)
+                plt.title('G_mat with KMeans factorization')
+                plt.axis('off')
+                plt.imshow(kmeans_grid)
+                plt.subplot(1,3,3)
+                plt.title('G_mat with NMF factorization')
+                plt.axis('off')
+                plt.imshow(nmf_grid)
+                plt.savefig(savepath+pair_class+vis_idx+'_'+choice+'_'+backbone+'_G_mat_all3_k={}'.format(k_list[i]))
 
     def visualize_k_means(self, hyperfeats, C_orisize, k_list):
         num_k = len(k_list)
         hyperfeats = hyperfeats.cpu().numpy()
         C_orisize = C_orisize.cpu().numpy()
         GT_list = []
+        L_list = []
         for k in k_list:
-            km = KMeans(n_clusters=k).fit(hyperfeats)
-            # print(km.cluster_centers_,km.cluster_centers_.shape)
+            km = KMeans(n_clusters=k,max_iter=500).fit(hyperfeats)
+            # print(km.cluster_centers_.shape) #k*C
             # G = hyperfeats@np.linalg.pinv(km.cluster_centers_)
             # print(G)
             # G_list.append(G)
             GT = np.zeros((k,hyperfeats.shape[0])) #GT shape:k*HW
-            assert(hyperfeats.shape[0]==km.labels_.shape[0])
+            assert(hyperfeats.shape[0]==km.labels_.shape[0]) # ==HW
             for label in range(km.labels_.shape[0]):
                 GT[km.labels_[label],label]=1
             # print(GT)
-            GT = torch.from_numpy(GT.reshape(k,1,C_orisize.shape[0],C_orisize.shape[1]))
+            # L = hyperfeats.T @ np.linalg.pinv(GT)
+            L = km.cluster_centers_.T #C*k
+
+            print(np.linalg.norm(hyperfeats.T @ np.linalg.pinv(GT)-L))
+            print(np.linalg.norm(L))
+            print(np.linalg.norm(km.cluster_centers_.T@GT - hyperfeats.T))
+            print(np.linalg.norm(hyperfeats))
+            
+            # L = hyperfeats.T @ GT.T
+            L_list.append(L)
+            GT = GT.reshape(k,1,C_orisize.shape[0],C_orisize.shape[1])
             GT_list.append(GT)
         assert(len(GT_list)==num_k)
         # plt.figure()
         # for i in range(num_k):
         #     img_grid = torchvision.utils.make_grid(GT_list[i],n_rows[i])
-        #     torchvision.utils.save_image(img_grid,'/home/jianting/SCOT/visualization/G_mat_k_means_k={}.jpg'.format(k_list[i]))
-        return GT_list
+        #     torchvision.utils.save_image(img_grid,'/sinergia/2022-fall-sp-jiguo/SCOT/visualization/G_mat_k_means_k={}.jpg'.format(k_list[i]))
+        return  L_list,GT_list
 
     def visualize_pca(self, hyperfeats, C_orisize, k_list):
         num_k = len(k_list)
         hyperfeats = hyperfeats.cpu().numpy()
         C_orisize = C_orisize.cpu().numpy()
         GT_list = []
+        L_list = []
         for k in k_list:
             pca = PCA(n_components=k)
             # pca.fit(hyperfeats)
@@ -489,6 +519,16 @@ class SCOT_CAM:
             # print(singular_values)
             # print(G)
             G = pca.fit_transform(hyperfeats) #G shape: HW*k
+            # L = hyperfeats.T @ np.linalg.pinv(G.T)
+            L = pca.components_.T  #C*k
+            
+            print(np.linalg.norm(L-hyperfeats.T @ np.linalg.pinv(G.T)))
+            print(np.linalg.norm(L))
+            print(np.linalg.norm(pca.components_.T@G.T-hyperfeats.T))
+            print(np.linalg.norm(hyperfeats))
+
+            L_list.append(L)
+            
             # GT = torch.from_numpy(G.T.reshape(k,1,C_orisize.shape[0],C_orisize.shape[1]))
             GT = G.T.reshape(k,C_orisize.shape[0],C_orisize.shape[1])
             GT_rgb = np.zeros((k,3,C_orisize.shape[0],C_orisize.shape[1]))
@@ -497,13 +537,13 @@ class SCOT_CAM:
                 GT_rgb[i,0,:,:] = np.abs(np.minimum(GT[i,:,:],0))
                 GT_rgb[i,2,:,:] = np.maximum(GT[i,:,:],0)
             # print(GT)
-            GT_list.append(torch.from_numpy(GT_rgb))
+            GT_list.append(GT_rgb)
         assert(len(GT_list)==num_k)
         # plt.figure()
         # for i in range(num_k):
         #     img_grid = torchvision.utils.make_grid(GT_list[i],n_rows[i])
-        #     torchvision.utils.save_image(img_grid,'/home/jianting/SCOT/visualization/G_mat_pca_k={}.jpg'.format(k_list[i]))
-        return GT_list
+        #     torchvision.utils.save_image(img_grid,'/sinergia/2022-fall-sp-jiguo/SCOT/visualization/G_mat_pca_k={}.jpg'.format(k_list[i]))
+        return L_list,GT_list
 
     def visualize_nmf(self, hyperfeats, C_orisize, k_list):
         num_k = len(k_list)
@@ -511,17 +551,26 @@ class SCOT_CAM:
         hyperfeats = hyperfeats.cpu().numpy()
         C_orisize = C_orisize.cpu().numpy()
         GT_list = []
+        L_list = []
         for k in k_list:
             nmf = NMF(n_components=k)
             G = nmf.fit_transform(hyperfeats) #G shape: HW*k
-            GT = torch.from_numpy(G.T.reshape(k,1,C_orisize.shape[0],C_orisize.shape[1]))
+            # L = hyperfeats.T @ np.linalg.pinv(G.T)
+            L = nmf.components_.T
+            print(np.linalg.norm(L-hyperfeats.T @ np.linalg.pinv(G.T)))
+            print(np.linalg.norm(L))
+            print(np.linalg.norm(nmf.components_.T@G.T-hyperfeats.T))
+            print(np.linalg.norm(hyperfeats))
+
+            L_list.append(L)
+            GT = G.T.reshape(k,1,C_orisize.shape[0],C_orisize.shape[1])
             GT_list.append(GT)
         assert(len(GT_list)==num_k)
         # plt.figure()
         # for i in range(num_k):
         #     img_grid = torchvision.utils.make_grid(GT_list[i],n_rows[i])
-        #     torchvision.utils.save_image(img_grid,'/home/jianting/SCOT/visualization/G_mat_nmf_k={}.jpg'.format(k_list[i]))
-        return GT_list
+        #     torchvision.utils.save_image(img_grid,'/sinergia/2022-fall-sp-jiguo/SCOT/visualization/G_mat_nmf_k={}.jpg'.format(k_list[i]))
+        return L_list,GT_list
 
 
     def plot_selfsim_statistic(self, C, T, RHM, C_orisize, scr_image_with_rps):
@@ -686,7 +735,7 @@ class SCOT_CAM:
         plt.axis('off')
         plt.imshow(RHM_std.cpu().numpy())
         plt.colorbar()
-        plt.savefig('/home/jianting/SCOT/visualization/self_similarity_statistics')
+        plt.savefig('/sinergia/2022-fall-sp-jiguo/SCOT/visualization/self_similarity_statistics')
 
 
     def extract_hyperpixel(self, img, maptype, bbox, mask, backbone="resnet101"):

@@ -150,17 +150,6 @@ def rhm(src_hyperpixels, trg_hyperpixels, hsfilter, sim, exp1, exp2, eps, ncells
     if sim in ['OT', 'cos', 'cos2']:
         return votes
 
-    '''
-    """visualize votes as the optimal transport matrix T"""
-    # ori_size = src_hpfeats_orisize[1:]+trg_hpfeats_orisize[1:]
-    # ori_size = tuple(ori_size.cpu().numpy())
-    PI_orisize = votes.view_as(C_mat)
-    plt.figure(1)
-    for i in range(src_kps_feat.size()[1]):
-        plt.subplot(1,src_kps_feat.size()[1],i+1)
-        plt.imshow(PI_orisize[int(src_kps_feat[0][i]),int(src_kps_feat[1][i]),:,:].cpu().numpy())
-    plt.savefig('/home/jianting/SCOT/visualization/self_sim_OTmatrix_src') if src_hpfeats_orisize.equal(trg_hpfeats_orisize) else plt.savefig('/home/jianting/SCOT/visualization/OTmatrix_src')
-    '''
 
     nbins_x, nbins_y, hs_cellsize = build_hspace(src_imsize, trg_imsize, ncells)
     bin_ids = hspace_bin_ids(src_imsize, src_hpgeomt, trg_hpgeomt, hs_cellsize, nbins_x)

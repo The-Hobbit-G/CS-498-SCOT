@@ -2,7 +2,7 @@
 
 import logging
 
-from skimage import draw
+# from skimage import draw
 import numpy as np
 import torch
 

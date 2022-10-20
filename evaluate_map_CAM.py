@@ -75,7 +75,7 @@ def run(datapath, benchmark, backbone, thres, alpha, hyperpixel,
 
         data['alpha'] = alpha
         tic = time.time()
-        print('src_kps_size:{}'.format(data['src_kps'].size()))
+        # print('src_kps_size:{}'.format(data['src_kps'].size()))
 
         # b) Feed a pair of images to Hyperpixel Flow model
         with torch.no_grad():

@@ -55,15 +55,15 @@ def appearance_similarity(src_feats, trg_feats, exp1=3):
 def appearance_similarityOT(src_feats, trg_feats, src_hpfeats_orisize, trg_hpfeats_orisize, exp1=1.0, exp2=1.0, eps=0.05, src_weights=None, trg_weights=None):
     r"""Semantic Appearance Similarity"""
     #st_weights = src_weights.mm(trg_weights.t())
-    print('size of fs:{}'.format(src_feats.size()))
-    print('size of ft:{}'.format(trg_feats.size()))
+    # print('size of fs:{}'.format(src_feats.size()))
+    # print('size of ft:{}'.format(trg_feats.size()))
 
     src_feat_norms = torch.norm(src_feats, p=2, dim=1).unsqueeze(1)
     trg_feat_norms = torch.norm(trg_feats, p=2, dim=1).unsqueeze(0)
     sim = torch.matmul(src_feats, trg_feats.t()) / \
           torch.matmul(src_feat_norms, trg_feat_norms)
     sim = torch.pow(torch.clamp(sim, min=0), 1.0)
-    print('size of C: {}'.format(sim.size()))
+    # print('size of C: {}'.format(sim.size()))
     #sim = sim*st_weights
     '''
     Visualize the similarity matrix
@@ -98,7 +98,7 @@ def appearance_similarityOT(src_feats, trg_feats, src_hpfeats_orisize, trg_hpfea
     #exp2 = 1.0 for spair-71k, TSS
     #exp2 = 0.5 # for pf-pascal and pfwillow
     PI = torch.pow(torch.clamp(PI, min=0), exp2)
-    print('size of T: {}'.format(PI.size()))
+    # print('size of T: {}'.format(PI.size()))
 
     # C_orisize = sim.view()
 

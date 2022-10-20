@@ -120,9 +120,9 @@ class SCOT_CAM:
         trg_kps = args[13]
         src_kps_feat = src_kps/self.jsz[self.hyperpixel_ids[0]]
         trg_kps_feat = trg_kps/self.jsz[self.hyperpixel_ids[0]]
-        print('src_kps size: {}, trg_kps size:{}'.format(src_kps_feat.size(),trg_kps_feat.size()))
-        print('image0 size: {}, image1 size: {}'.format(args[0].size(),args[1].size()))
-        print('image type:{}'.format(type(args[0]),type(args[1])))
+        # print('src_kps size: {}, trg_kps size:{}'.format(src_kps_feat.size(),trg_kps_feat.size()))
+        # print('image0 size: {}, image1 size: {}'.format(args[0].size(),args[1].size()))
+        # print('image type:{}'.format(type(args[0]),type(args[1])))
 
         ##visualize the souce and target images
         source_image = self.detransform(args[0])
@@ -137,14 +137,14 @@ class SCOT_CAM:
         trg_hyperpixels = self.extract_hyperpixel(args[1], maptype, trg_bbox, trg_mask, backbone)
         src_featmap = src_hyperpixels[-1]
         trg_featmap = trg_hyperpixels[-1]
-        print('----src,trg featmap size : {},{}'.format(src_featmap.size(),trg_featmap.size()))
+        # print('----src,trg featmap size : {},{}'.format(src_featmap.size(),trg_featmap.size()))
 
         num_kps = src_kps_feat.size()[1]
         
         """Visualize cross-similarity C"""
         
         C_mat = torch.einsum('kij,kmn -> ijmn',(src_featmap,trg_featmap))/(torch.norm(src_featmap,2)*torch.norm(trg_featmap,2))
-        print('C_mat size: {}'.format(C_mat.size()))
+        # print('C_mat size: {}'.format(C_mat.size()))
         
 
         '''
@@ -159,10 +159,10 @@ class SCOT_CAM:
         """Visualize cross-similarity OT matrix T and p(m|D) after RHM"""
         ##cross-similarity T for the source image
         confidence_ts, OT_mat, C_2dim = rhm_map.rhm(src_hyperpixels, trg_hyperpixels, self.hsfilter, args[2], args[3], args[4], args[5])
-        print('**confidence_ts size: {}'.format(confidence_ts.size()))
+        # print('**confidence_ts size: {}'.format(confidence_ts.size()))
         confidence_ts_orisize = confidence_ts.view_as(C_mat)
         OT_mat_orisize = OT_mat.view_as(C_mat)
-        print('**confidence_ts original size:{}'.format(confidence_ts_orisize.size()))
+        # print('**confidence_ts original size:{}'.format(confidence_ts_orisize.size()))
 
 
         '''
@@ -615,8 +615,8 @@ class SCOT_CAM:
         T_entropy = -torch.sum(PT*lnPT,dim =1)
         RHM_entropy = -torch.sum(PRHM*lnPRHM,dim =1)
 
-        print(C_entropy.max(),T_entropy.max(),RHM_entropy.max())
-        print(C_entropy.min(),T_entropy.min(),RHM_entropy.min())
+        # print(C_entropy.max(),T_entropy.max(),RHM_entropy.max())
+        # print(C_entropy.min(),T_entropy.min(),RHM_entropy.min())
 
         # if activation == 'softmax':
         #     C_entropy = F.softmax(C_entropy,dim=0)
@@ -628,7 +628,9 @@ class SCOT_CAM:
         #     RHM_entropy = F.relu(RHM_entropy)
 
 
-        print(C_entropy,T_entropy,RHM_entropy)
+        # print(C_entropy,T_entropy,RHM_entropy)
+
+
         # print(T_entropy.max(),T_entropy.min())
         # print(C_entropy.dtype,T_entropy.dtype,RHM_entropy.dtype)
         # C_entropy = C_entropy/C_entropy.max()
@@ -657,7 +659,7 @@ class SCOT_CAM:
         # T_sum = T_sum/T_sum.max()
         # RHM_sum = RHM_sum/RHM_sum.max()
 
-        print(T_mean, T_sum)
+        # print(T_mean, T_sum)
 
         C_std = torch.std(C,dim=1).view_as(C_orisize)
         T_std = torch.std(T,dim=1).view_as(C_orisize)
@@ -741,7 +743,7 @@ class SCOT_CAM:
     def extract_hyperpixel(self, img, maptype, bbox, mask, backbone="resnet101"):
         r"""Given image, extract desired list of hyperpixels"""
         hyperfeats, rfsz, jsz, feat_map, fc = self.extract_intermediate_feat(img.unsqueeze(0), return_hp=True, backbone=backbone)
-        print('image size:{}, feature map size:{}'.format(img.size(),feat_map.size()))
+        # print('image size:{}, feature map size:{}'.format(img.size(),feat_map.size()))
         hpgeometry = geometry.receptive_fields(rfsz, jsz, hyperfeats.size()).to(self.device)
         
         hyperfeats_orisize = copy.deepcopy(hyperfeats)
@@ -753,7 +755,7 @@ class SCOT_CAM:
             hyperfeats = hyperfeats[valid_ids, :]
 
         weights = torch.ones(len(hyperfeats),1).to(hyperfeats.device) ##Since hyperfeats.size() = (3750,3136), len(hyperfeats)=3750
-        print('--**--**weights size: {}'.format(weights.size()))
+        # print('--**--**weights size: {}'.format(weights.size()))
         if maptype in [1]: # weight points
             ##Mind that the given mask is None in our case since we don't specify args.cam as shown in evaluate_map_CAM.py
             if mask is None:
@@ -843,7 +845,7 @@ class SCOT_CAM:
         # and this feature map is gotten by upsampling stacking the feature maps selected layers
         # In this way, we can make use of the multi-level representations
 
-        print('****feats size:{}'.format(feats.size()))
+        # print('****feats size:{}'.format(feats.size()))
 
         return feats[0], rfsz, jsz, feat_map, fc
     

@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from typing import OrderedDict
 #from .utils import load_state_dict_from_url
 try:
     from torch.hub import load_state_dict_from_url
@@ -16,8 +17,8 @@ __all__ = ['ResNet', 'resnet18', 'resnet34', 'resnet50', 'resnet101',
 model_urls = {
     'resnet18': 'https://download.pytorch.org/models/resnet18-5c106cde.pth',
     'resnet34': 'https://download.pytorch.org/models/resnet34-333f7ec4.pth',
-    'resnet50': 'https://download.pytorch.org/models/resnet50-19c8e357.pth',
-    'resnet101': 'https://download.pytorch.org/models/resnet101-5d3b4d8f.pth',
+    'resnet50': '/home/jianting/SCOT/model/pretrained/resnet50-19c8e357.pth',
+    'resnet101': '/home/jianting/SCOT/model/pretrained/resnet101-5d3b4d8f.pth',
     'resnet152': 'https://download.pytorch.org/models/resnet152-b121ed2d.pth',
     'resnext50_32x4d': 'https://download.pytorch.org/models/resnext50_32x4d-7cdf4587.pth',
     'resnext101_32x8d': 'https://download.pytorch.org/models/resnext101_32x8d-8ba56ff5.pth',
@@ -239,8 +240,7 @@ class ResNet(nn.Module):
 def _resnet(arch, block, layers, pretrained, progress, **kwargs):
     model = ResNet(block, layers, **kwargs)
     if pretrained:
-        state_dict = load_state_dict_from_url(model_urls[arch],
-                                              progress=progress)
+        state_dict = torch.load(model_urls[arch])
         model.load_state_dict(state_dict)
     return model
 
@@ -248,17 +248,30 @@ def _resnet_densecl(arch, block, layers, pretrained, progress, **kwargs):
     resnet_backbone = ResNet(block, layers, **kwargs)
     if pretrained:
         pretrained_dict = torch.load(model_urls[arch])['state_dict']
-        resnet_dict = load_state_dict_from_url(model_urls[arch.split('_')[0]],progress=progress)
+        resnet_dict = torch.load(model_urls[arch.split('_')[0]])
+        new_dict = OrderedDict()
         # resnet_backbone.avgpool = nn.Sequential()
         # resnet_backbone.fc = nn.Sequential()
         # for name in resnet_backbone.state_dict():
         #     print(name)
-        # print(len(resnet_backbone.state_dict()),len(pretrained_dict))
-        # assert(len(resnet_backbone.state_dict())==len(pretrained_dict))
-        for k,v in resnet_dict.items():
-            if k in pretrained_dict:
-                resnet_dict[k] = pretrained_dict[k]
-        resnet_backbone.load_state_dict(resnet_dict)
+        # for name in pretrained_dict:
+        #     print(name)
+        # for name in resnet_dict:
+        #     print(name)
+
+        for k,v in resnet_backbone.state_dict().items():
+            if k in pretrained_dict.keys():
+                new_dict[k]=pretrained_dict[k]
+            elif k in resnet_dict:
+                new_dict[k]=resnet_dict[k]
+        # for name in new_dict:
+        #     print(name)
+        # print(len(resnet_backbone.state_dict()),len(new_dict))
+        assert(len(resnet_backbone.state_dict())==len(new_dict))
+        # for k,v in resnet_dict.items():
+        #     if k in pretrained_dict:
+        #         resnet_dict[k] = pretrained_dict[k]
+        resnet_backbone.load_state_dict(new_dict)
     return resnet_backbone
 
 

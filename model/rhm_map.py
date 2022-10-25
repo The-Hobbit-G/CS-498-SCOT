@@ -58,6 +58,7 @@ def appearance_similarityOT(src_feats, trg_feats, src_hpfeats_orisize, trg_hpfea
     # print('size of fs:{}'.format(src_feats.size()))
     # print('size of ft:{}'.format(trg_feats.size()))
 
+    ##The norm should be computed along channel(C). So each hyper-pixel should be normalized with a specific norm
     src_feat_norms = torch.norm(src_feats, p=2, dim=1).unsqueeze(1)
     trg_feat_norms = torch.norm(trg_feats, p=2, dim=1).unsqueeze(0)
     sim = torch.matmul(src_feats, trg_feats.t()) / \

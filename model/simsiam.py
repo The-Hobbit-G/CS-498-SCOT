@@ -19,7 +19,7 @@ except ImportError:
 model_urls = {
     'simsiam_256bs': '/home/jianting/SCOT/model/pretrained/checkpoint_0099_256bs.pth.tar',
     'simsiam_512bs': '/home/jianting/SCOT/model/pretrained/checkpoint_0099_512bs.pth.tar',
-    'resnet50': 'https://download.pytorch.org/models/resnet50-19c8e357.pth',
+    'resnet50': '/home/jianting/SCOT/model/pretrained/resnet50-19c8e357.pth',
 }
 
 
@@ -86,21 +86,32 @@ def _simsiam(arch, block, layers, pretrained, progress, **kwargs):
     if pretrained:
         checkpoint = torch.load(model_urls[arch])
         state_dict = checkpoint['state_dict']
-        resnet_state_dict = load_state_dict_from_url(model_urls['resnet50'],progress=progress)
-        # print(len(resnet_state_dict))
+        resnet_state_dict = torch.load(model_urls['resnet50'])
         # for name in state_dict:
         #     print(name)
         # for name in resnet_state_dict:
         #     print(name)
-        # new_dict = OrderedDict()
+        # for name in model.state_dict():
+        #     print(name)
+        new_dict = OrderedDict()
         # print(len(state_dict.keys()))
+        # print(len(resnet_state_dict))
+        # print(len(model.state_dict()))
         # new_dict = {k.replace('module.encoder',''):v for k,v in state_dict.items() if k.replace('module.encoder','') in resnet_state_dict}
+        # for k,v in state_dict.items():
+        #     if k.replace('module.encoder','') in resnet_state_dict:
+        #         resnet_state_dict[k.replace('module.encoder','')] = state_dict[k]
         for k,v in state_dict.items():
-            if k.replace('module.encoder','') in resnet_state_dict:
-                resnet_state_dict[k.replace('module.encoder','')] = state_dict[k]
-        # print(len(model.state_dict()),len(resnet_state_dict))
-        # assert(len(model.state_dict())==len(resnet_state_dict))
-        model.load_state_dict(resnet_state_dict)
+            # print(k.replace('module.encoder',''),'--')
+            if k.replace('module.encoder.','') in model.state_dict():
+                new_dict[k.replace('module.encoder.','')] = state_dict[k]
+        new_dict['fc.weight']=resnet_state_dict['fc.weight']
+        new_dict['fc.bias'] = resnet_state_dict['fc.bias']
+        # for name in resnet_state_dict:
+        #     print(name)
+        # print(len(model.state_dict()),len(new_dict))
+        assert(len(model.state_dict())==len(new_dict))
+        model.load_state_dict(new_dict)
         # res50_simsiam = model.encoder
         # for name in res50_simsiam.state_dict():
         #     print(name)

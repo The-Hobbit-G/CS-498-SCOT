@@ -405,10 +405,16 @@ class SCOT_CAM:
         choice_list = ['src','trg']
         assert(choice in choice_list)
         num_k = len(k_list)
+        source_image = self.detransform(src_img)
+        target_image = self.detransform(trg_img)
+        scr_image = tensor_to_np(source_image)
+        trg_image = tensor_to_np(target_image)
         if choice == 'src':
             hyperpixels = self.extract_hyperpixel(src_img, maptype, src_bbox, src_mask, backbone)
+            shown_image = scr_image
         elif choice == 'trg':
             hyperpixels = self.extract_hyperpixel(trg_img, maptype, trg_bbox, trg_mask, backbone)
+            shown_image = trg_image
         else:
             raise Exception('image not in src or trg')
 
@@ -437,14 +443,37 @@ class SCOT_CAM:
             for i in range(num_k):
                 # kmeans_grid = torchvision.utils.make_grid(GT_list_kmeans[i],n_rows[i])
                 # kmeans_grid = kmeans_grid.cpu().numpy()
-                Li_kmeans = L_list_kmeans[i]
                 Li_pca = L_list_pca[i]
+                Li_kmeans = L_list_kmeans[i]
                 Li_nmf = L_list_nmf[i]
+
+                Li_pca_norm = np.linalg.norm(Li_pca, ord=2, axis=0)
+                Li_kmeans_norm = np.linalg.norm(Li_kmeans, ord=2, axis=0)
+                Li_nmf_norm = np.linalg.norm(Li_nmf, ord=2, axis=0)
+
+                Li_pca_norm = np.expand_dims(Li_pca_norm,axis=1)
+                Li_kmeans_norm = np.expand_dims(Li_kmeans_norm,axis=0)
+                Li_nmf_norm = np.expand_dims(Li_nmf_norm,axis=0)
+                
                 #correlation matrix L1.T@L2-->k*k matrix
-                C_pca_kmeas = Li_pca.T@Li_kmeans
-                C_pca_nmf = Li_pca.T@Li_nmf
-                row_ind_pca_kmeans, col_ind_pca_kmeans = linear_sum_assignment(C_pca_kmeas)
-                row_ind_pca_nmf, col_ind_pca_nmf = linear_sum_assignment(C_pca_nmf)
+                # print(Li_pca.shape,Li_kmeans.shape,Li_nmf.shape)
+                C_pca_kmeas = (Li_pca.T@Li_kmeans)/(Li_pca_norm@Li_kmeans_norm)
+                C_pca_nmf = (Li_pca.T@Li_nmf)/(Li_pca_norm@Li_nmf_norm)
+                # print('max and min of C_pca_kmeas are:{},{}'.format(np.max(C_pca_kmeas),np.min(C_pca_kmeas)))
+                # print('max and min of C_pca_nmf are:{},{}'.format(np.max(C_pca_nmf),np.min(C_pca_nmf)))
+
+                # C_pca_kmeas = torch.pow(torch.clamp(C_pca_kmeas, min=0), 1.0)
+                # C_pca_nmf = torch.pow(torch.clamp(C_pca_nmf, min=0), 1.0)
+                C_pca_kmeas = np.power(np.maximum(C_pca_kmeas,0),1.0)
+                C_pca_nmf = np.power(np.maximum(C_pca_nmf,0),1.0)
+
+                # print('max and min of C_pca_kmeas are:{},{}'.format(np.max(C_pca_kmeas),np.min(C_pca_kmeas)))
+                # print('max and min of C_pca_nmf are:{},{}'.format(np.max(C_pca_nmf),np.min(C_pca_nmf)))
+
+
+
+                row_ind_pca_kmeans, col_ind_pca_kmeans = linear_sum_assignment(1-C_pca_kmeas)
+                row_ind_pca_nmf, col_ind_pca_nmf = linear_sum_assignment(1-C_pca_nmf)
                 GT_list_kmeans[i] = GT_list_kmeans[i][col_ind_pca_kmeans,:]
                 GT_list_nmf[i] = GT_list_nmf[i][col_ind_pca_nmf,:]
                 
@@ -454,16 +483,20 @@ class SCOT_CAM:
                 pca_grid = pca_grid.numpy().astype(np.float64)
                 kmeans_grid = kmeans_grid.numpy().astype(np.float64)
                 nmf_grid = nmf_grid.numpy().astype(np.float64)
-                plt.figure(figsize=(4*3,4))
-                plt.subplot(1,3,1)
+                plt.figure(figsize=(4*4,4))
+                plt.subplot(1,4,1)
+                plt.title('Image')
+                plt.axis('off')
+                plt.imshow(shown_image)
+                plt.subplot(1,4,2)
                 plt.title('G_mat with PCA factorization')
                 plt.axis('off')
                 plt.imshow(pca_grid)
-                plt.subplot(1,3,2)
+                plt.subplot(1,4,3)
                 plt.title('G_mat with KMeans factorization')
                 plt.axis('off')
                 plt.imshow(kmeans_grid)
-                plt.subplot(1,3,3)
+                plt.subplot(1,4,4)
                 plt.title('G_mat with NMF factorization')
                 plt.axis('off')
                 plt.imshow(nmf_grid)
@@ -471,6 +504,7 @@ class SCOT_CAM:
 
     def visualize_k_means(self, hyperfeats, C_orisize, k_list):
         num_k = len(k_list)
+        hyperfeats = F.relu(hyperfeats)
         hyperfeats = hyperfeats.cpu().numpy()
         C_orisize = C_orisize.cpu().numpy()
         GT_list = []
@@ -489,8 +523,9 @@ class SCOT_CAM:
             # L = hyperfeats.T @ np.linalg.pinv(GT)
             L = km.cluster_centers_.T #C*k
 
-            print(np.linalg.norm(hyperfeats.T @ np.linalg.pinv(GT)-L))
-            print(np.linalg.norm(L))
+            # print(np.linalg.norm(hyperfeats.T @ np.linalg.pinv(GT)-L))
+            # print(np.linalg.norm(L))
+            print('KMeans reconstruction error and hyperfeats norm with k={}'.format(k))
             print(np.linalg.norm(km.cluster_centers_.T@GT - hyperfeats.T))
             print(np.linalg.norm(hyperfeats))
             
@@ -507,6 +542,7 @@ class SCOT_CAM:
 
     def visualize_pca(self, hyperfeats, C_orisize, k_list):
         num_k = len(k_list)
+        hyperfeats = F.relu(hyperfeats)
         hyperfeats = hyperfeats.cpu().numpy()
         C_orisize = C_orisize.cpu().numpy()
         GT_list = []
@@ -522,8 +558,9 @@ class SCOT_CAM:
             # L = hyperfeats.T @ np.linalg.pinv(G.T)
             L = pca.components_.T  #C*k
             
-            print(np.linalg.norm(L-hyperfeats.T @ np.linalg.pinv(G.T)))
-            print(np.linalg.norm(L))
+            # print(np.linalg.norm(L-hyperfeats.T @ np.linalg.pinv(G.T)))
+            # print(np.linalg.norm(L))
+            print('PCA reconstruction error and hyperfeats norm with k={}'.format(k))
             print(np.linalg.norm(pca.components_.T@G.T-hyperfeats.T))
             print(np.linalg.norm(hyperfeats))
 
@@ -557,8 +594,9 @@ class SCOT_CAM:
             G = nmf.fit_transform(hyperfeats) #G shape: HW*k
             # L = hyperfeats.T @ np.linalg.pinv(G.T)
             L = nmf.components_.T
-            print(np.linalg.norm(L-hyperfeats.T @ np.linalg.pinv(G.T)))
-            print(np.linalg.norm(L))
+            # print(np.linalg.norm(L-hyperfeats.T @ np.linalg.pinv(G.T)))
+            # print(np.linalg.norm(L))
+            print('NMF reconstruction error and hyperfeats norm with k={}'.format(k))
             print(np.linalg.norm(nmf.components_.T@G.T-hyperfeats.T))
             print(np.linalg.norm(hyperfeats))
 
@@ -743,7 +781,15 @@ class SCOT_CAM:
     def extract_hyperpixel(self, img, maptype, bbox, mask, backbone="resnet101"):
         r"""Given image, extract desired list of hyperpixels"""
         hyperfeats, rfsz, jsz, feat_map, fc = self.extract_intermediate_feat(img.unsqueeze(0), return_hp=True, backbone=backbone)
+
+        ###feat_map_fix,fc_fix are generated to fix the CAM(The CAM should always come from SCOT with resnet50 pretrained on ImageNet in a supervised way as backbone)
+        if backbone in ['resnet101','resnet101_densecl_IN']:
+            _, _, _, feat_map_fix, fc_fix = self.extract_intermediate_feat(img.unsqueeze(0), return_hp=True, backbone='resnet101')
+        else:
+            _, _, _, feat_map_fix, fc_fix = self.extract_intermediate_feat(img.unsqueeze(0), return_hp=True, backbone='resnet50')
+        
         # print('image size:{}, feature map size:{}'.format(img.size(),feat_map.size()))
+        # print('max and min of hyperfeats are: {},{}'.format(torch.max(hyperfeats),torch.min(hyperfeats)))
         hpgeometry = geometry.receptive_fields(rfsz, jsz, hyperfeats.size()).to(self.device)
         
         hyperfeats_orisize = copy.deepcopy(hyperfeats)
@@ -764,7 +810,7 @@ class SCOT_CAM:
                     mask = self.get_FCN_map(img.unsqueeze(0), feat_map, fc, sz=(img.size(1),img.size(2)))
                 else:
                     #adding an backbone attribute to determin the generation of CAM(using different fully connection layers)
-                    mask = self.get_CAM_multi(img.unsqueeze(0), feat_map, fc, sz=(img.size(1),img.size(2)), top_k=2)
+                    mask = self.get_CAM_multi(img.unsqueeze(0), feat_map_fix, fc_fix, sz=(img.size(1),img.size(2)), top_k=2)
                 scale = 1.0
             else:
                 scale = 255.0

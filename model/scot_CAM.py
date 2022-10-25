@@ -118,19 +118,23 @@ class SCOT_CAM:
         backbone = args[11]
         src_kps = args[12]
         trg_kps = args[13]
-        src_kps_feat = src_kps/self.jsz[self.hyperpixel_ids[0]]
-        trg_kps_feat = trg_kps/self.jsz[self.hyperpixel_ids[0]]
+        # src_kps_feat = src_kps/self.jsz[self.hyperpixel_ids[0]]
+        # trg_kps_feat = trg_kps/self.jsz[self.hyperpixel_ids[0]]
+        factorization = args[14]
+        k=args[15]
+        activation = args[16]
+        normalization = args[17]
         # print('src_kps size: {}, trg_kps size:{}'.format(src_kps_feat.size(),trg_kps_feat.size()))
         # print('image0 size: {}, image1 size: {}'.format(args[0].size(),args[1].size()))
         # print('image type:{}'.format(type(args[0]),type(args[1])))
 
         ##visualize the souce and target images
-        source_image = self.detransform(args[0])
-        target_image = self.detransform(args[1])
-        scr_image = tensor_to_np(source_image)
-        trg_image = tensor_to_np(target_image)
-        scr_image_with_rps = show_from_cv(scr_image,src_kps.cpu().numpy().astype(int))
-        trg_image_with_rps = show_from_cv(trg_image,trg_kps.cpu().numpy().astype(int))
+        # source_image = self.detransform(args[0])
+        # target_image = self.detransform(args[1])
+        # scr_image = tensor_to_np(source_image)
+        # trg_image = tensor_to_np(target_image)
+        # scr_image_with_rps = show_from_cv(scr_image,src_kps.cpu().numpy().astype(int))
+        # trg_image_with_rps = show_from_cv(trg_image,trg_kps.cpu().numpy().astype(int))
         #########
 
         src_hyperpixels = self.extract_hyperpixel(args[0], maptype, src_bbox, src_mask, backbone)
@@ -139,7 +143,7 @@ class SCOT_CAM:
         trg_featmap = trg_hyperpixels[-1]
         # print('----src,trg featmap size : {},{}'.format(src_featmap.size(),trg_featmap.size()))
 
-        num_kps = src_kps_feat.size()[1]
+        # num_kps = src_kps_feat.size()[1]
         
         """Visualize cross-similarity C"""
         
@@ -158,7 +162,7 @@ class SCOT_CAM:
 
         """Visualize cross-similarity OT matrix T and p(m|D) after RHM"""
         ##cross-similarity T for the source image
-        confidence_ts, OT_mat, C_2dim = rhm_map.rhm(src_hyperpixels, trg_hyperpixels, self.hsfilter, args[2], args[3], args[4], args[5])
+        confidence_ts, OT_mat, C_2dim = rhm_map.rhm(src_hyperpixels, trg_hyperpixels, self.hsfilter, args[2], args[3], args[4], args[5],k,factorization,activation,normalization)
         # print('**confidence_ts size: {}'.format(confidence_ts.size()))
         confidence_ts_orisize = confidence_ts.view_as(C_mat)
         OT_mat_orisize = OT_mat.view_as(C_mat)

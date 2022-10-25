@@ -249,7 +249,7 @@ def _resnet_densecl(arch, block, layers, pretrained, progress, **kwargs):
     if pretrained:
         pretrained_dict = torch.load(model_urls[arch])['state_dict']
         resnet_dict = torch.load(model_urls[arch.split('_')[0]])
-        new_dict = OrderedDict()
+        # new_dict = OrderedDict()
         # resnet_backbone.avgpool = nn.Sequential()
         # resnet_backbone.fc = nn.Sequential()
         # for name in resnet_backbone.state_dict():
@@ -259,19 +259,21 @@ def _resnet_densecl(arch, block, layers, pretrained, progress, **kwargs):
         # for name in resnet_dict:
         #     print(name)
 
-        for k,v in resnet_backbone.state_dict().items():
-            if k in pretrained_dict.keys():
-                new_dict[k]=pretrained_dict[k]
-            elif k in resnet_dict:
-                new_dict[k]=resnet_dict[k]
+        # for k,v in resnet_backbone.state_dict().items():
+        #     if k in pretrained_dict.keys():
+        #         new_dict[k]=pretrained_dict[k]
+            # elif k in resnet_dict:
+            #     new_dict[k]=resnet_dict[k]
+        pretrained_dict['fc.weight']=resnet_dict['fc.weight']
+        pretrained_dict['fc.bias'] = resnet_dict['fc.bias']
         # for name in new_dict:
         #     print(name)
         # print(len(resnet_backbone.state_dict()),len(new_dict))
-        assert(len(resnet_backbone.state_dict())==len(new_dict))
+        assert(len(resnet_backbone.state_dict())==len(pretrained_dict))
         # for k,v in resnet_dict.items():
         #     if k in pretrained_dict:
         #         resnet_dict[k] = pretrained_dict[k]
-        resnet_backbone.load_state_dict(new_dict)
+        resnet_backbone.load_state_dict(pretrained_dict)
     return resnet_backbone
 
 

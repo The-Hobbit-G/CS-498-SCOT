@@ -16,7 +16,7 @@ from data import dataset, download
 import numpy as np
 
 
-def run(datapath, benchmark, backbone, thres, alpha, hyperpixel,
+def run(datapath, benchmark, backbone, thres, alpha, hyperpixel, factorization,activation,normalization,k,
         logpath, args, beamsearch=False, model=None, dataloader=None):
     r"""Runs Semantic Correspondence as an Optimal Transport Problem"""
 
@@ -45,6 +45,16 @@ def run(datapath, benchmark, backbone, thres, alpha, hyperpixel,
         model.hyperpixel_ids = util.parse_hyperpixel(hyperpixel)
 
     # 4. Evaluator initialization
+    factorization_list = ['PCA','NMF','KMeans','No']
+    assert(factorization in factorization_list)
+    activation_list = ['ReLU','No']
+    assert (activation in activation_list)
+    normalization_list = ['Mutual','No']
+    assert(normalization in normalization_list)
+
+
+
+
     evaluator = evaluation.Evaluator(benchmark, device)
 
     zero_pcks = 0
@@ -79,7 +89,7 @@ def run(datapath, benchmark, backbone, thres, alpha, hyperpixel,
 
         # b) Feed a pair of images to Hyperpixel Flow model
         with torch.no_grad():
-            confidence_ts, src_box, trg_box = model(data['src_img'], data['trg_img'], args.sim, args.exp1, args.exp2, args.eps, args.classmap, data['src_bbox'], data['trg_bbox'], data['src_mask'], data['trg_mask'], backbone, data['src_kps'], data['trg_kps'])
+            confidence_ts, src_box, trg_box = model(data['src_img'], data['trg_img'], args.sim, args.exp1, args.exp2, args.eps, args.classmap, data['src_bbox'], data['trg_bbox'], data['src_mask'], data['trg_mask'], backbone, data['src_kps'], data['trg_kps'],factorization,k,activation,normalization)
             conf, trg_indices = torch.max(confidence_ts, dim=1)
             unique, inv = torch.unique(trg_indices, sorted=False, return_inverse=True)
             trgpt_list.append(len(unique))
@@ -133,11 +143,16 @@ if __name__ == '__main__':
     parser.add_argument('--eps', type=float, default=0.05, help='epsilon for Sinkhorn Regularization')
     parser.add_argument('--classmap', type=int, default=1, help='class activation map: 0 for none, 1 for using CAM')
     parser.add_argument('--cam', type=str, default='', help='activation map folder, empty for end2end computation')
+    parser.add_argument('--facorization',type=str,default='No',help='Choose the factorization methods you want to visualize, PCA,NMF,or Kmeans')
+    parser.add_argument('--k',type=int,default=9, help='dimension of the factorized matrix M (X=L@M.T)')
+    parser.add_argument('--activation',type=str,default='No', help='decide whether to apply a ReLU application to the hyperfeats')
+    parser.add_argument('--normalization',type=str,default='No', help='decide whether to apply a mutual mean normalization to the hyperfeats')
+
 
     args = parser.parse_args()
     os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
 
     run(datapath=args.datapath, benchmark=args.dataset, backbone=args.backbone, thres=args.thres,
-        alpha=args.alpha, hyperpixel=args.hyperpixel, logpath=args.logpath, args=args, beamsearch=False)
+        alpha=args.alpha, hyperpixel=args.hyperpixel,factorization=args.facorization,activation=args.activation,normalization=args.normalization,k=args.k,logpath=args.logpath, args=args, beamsearch=False)
 
     util.log_args(args)

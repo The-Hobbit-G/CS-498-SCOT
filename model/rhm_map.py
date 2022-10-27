@@ -71,9 +71,12 @@ def pca_(src_feats_np,trg_feats_np,src_feat_norms,trg_feat_norms,k):
     L_trg_norm = np.expand_dims(L_trg_norm,axis = 0)
 
     L_corr = (L_src.T@L_trg)/(L_src_norm@L_trg_norm)
+    # print(np.max(1-L_corr),np.min(1-L_corr))
+    L_corr = np.power(np.maximum(L_corr,0),1.0)
 
     row_ind,col_ind = linear_sum_assignment(1-L_corr)
-    assert(row_ind.shape==col_ind.shape)
+    assert(row_ind.shape[0]==col_ind.shape[0]==G_src.shape[1]==G_trg.shape[1])
+    G_trg = G_trg[:,col_ind]
     L_corr_new = np.zeros((row_ind.shape[0],col_ind.shape[0]))
     L_corr_new[row_ind,col_ind] = 1.0
 
@@ -104,9 +107,11 @@ def kmeans_(src_feats_np,trg_feats_np,src_feat_norms,trg_feat_norms,k):
     L_trg_norm = np.expand_dims(L_trg_norm,axis = 0)
 
     L_corr = (L_src.T@L_trg)/(L_src_norm@L_trg_norm)
+    L_corr = np.power(np.maximum(L_corr,0),1.0)
 
     row_ind,col_ind = linear_sum_assignment(1-L_corr)
-    assert(row_ind.shape==col_ind.shape)
+    assert(row_ind.shape[0]==col_ind.shape[0]==G_src.shape[1]==G_trg.shape[1])
+    G_trg = G_trg[:,col_ind]
     L_corr_new = np.zeros((row_ind.shape[0],col_ind.shape[0]))
     L_corr_new[row_ind,col_ind] = 1.0
 
@@ -130,9 +135,12 @@ def nmf_(src_feats_np,trg_feats_np,src_feat_norms,trg_feat_norms,k):
     L_trg_norm = np.expand_dims(L_trg_norm,axis = 0)
 
     L_corr = (L_src.T@L_trg)/(L_src_norm@L_trg_norm)
+    L_corr = np.power(np.maximum(L_corr,0),1.0)
 
     row_ind,col_ind = linear_sum_assignment(1-L_corr)
-    assert(row_ind.shape==col_ind.shape)
+    
+    assert(row_ind.shape[0]==col_ind.shape[0]==G_src.shape[1]==G_trg.shape[1])
+    G_trg = G_trg[:,col_ind]
     L_corr_new = np.zeros((row_ind.shape[0],col_ind.shape[0]))
     L_corr_new[row_ind,col_ind] = 1.0
 
@@ -154,7 +162,7 @@ def appearance_similarityOT(src_feats, trg_feats, k, factorization, exp1=1.0, ex
     if normalization == 'Mutual':
         src_mean = torch.mean(src_feats,dim=0)
         trg_mean = torch.mean(trg_feats,dim=0)
-        multual_mean = (src_mean+trg_mean)/2
+        multual_mean = (src_mean*src_feats.shape[0]+trg_mean*trg_feats.shape[0])/(src_feats.shape[0]+trg_feats.shape[0])
         src_feats = src_feats-multual_mean
         trg_feats = trg_feats-multual_mean
     
@@ -249,7 +257,7 @@ def build_hspace(src_imsize, trg_imsize, ncells):
     return nbins_x, nbins_y, hs_cellsize
 
 
-def rhm(src_hyperpixels, trg_hyperpixels, hsfilter, sim, exp1, exp2, eps,k,factorization='No',activation='No',normalization='No',ncells=8192):
+def rhm(src_hyperpixels, trg_hyperpixels, hsfilter, sim, exp1, exp2, eps,k=4,factorization='No',activation='No',normalization='No',ncells=8192):
     r"""Regularized Hough matching"""
     # Unpack hyperpixels
     # src_hpgeomt, src_hpfeats, src_imsize, src_weights = src_hyperpixels

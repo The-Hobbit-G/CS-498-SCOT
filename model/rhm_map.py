@@ -56,23 +56,35 @@ def appearance_similarity(src_feats, trg_feats, exp1=3):
 
     return sim
 
-def pca_(src_feats_np,trg_feats_np,src_feat_norms,trg_feat_norms,k):
-    pca_src = PCA(n_components=k)
-    pca_trg = PCA(n_components=k)
+def pca_(src_feats,trg_feats,src_feat_norms,trg_feat_norms,k):
+    # pca_src = PCA(n_components=k)
+    # pca_trg = PCA(n_components=k)
 
-    G_src = pca_src.fit_transform(src_feats_np) ##HW*k
-    L_src = pca_src.components_.T ##C*k
-    G_trg = pca_trg.fit_transform(trg_feats_np)  ##HW*k
-    L_trg = pca_trg.components_.T ##C*k
+    U_src,S_src,Vh_src = torch.linalg.svd(src_feats.T) # src_feats:HW*C --> src_feats.T:C*HW
+    L_src = U_src[:,0:k]@torch.diag(S_src[0:k])
+    G_src = Vh_src[0:k,:].T
+    U_trg,S_trg,Vh_trg = torch.linalg.svd(trg_feats.T) # src_feats:HW*C --> src_feats.T:C*HW
+    L_trg = U_trg[:,0:k]@torch.diag(S_trg[0:k])
+    G_trg = Vh_trg[0:k,:].T
 
-    L_src_norm = np.linalg.norm(L_src, ord=2, axis=0)
-    L_trg_norm = np.linalg.norm(L_trg, ord=2, axis=0)
-    L_src_norm = np.expand_dims(L_src_norm,axis = 1)
-    L_trg_norm = np.expand_dims(L_trg_norm,axis = 0)
+    L_src_norm = torch.norm(L_src, p=2, dim=0).unsqueeze(1)
+    L_trg_norm = torch.norm(L_trg, p=2, dim=0).unsqueeze(0)
+
+
+    # G_src = pca_src.fit_transform(src_feats) ##HW*k
+    # L_src = pca_src.components_.T ##C*k
+    # G_trg = pca_trg.fit_transform(trg_feats)  ##HW*k
+    # L_trg = pca_trg.components_.T ##C*k
+
+    # L_src_norm = np.linalg.norm(L_src, ord=2, axis=0)
+    # L_trg_norm = np.linalg.norm(L_trg, ord=2, axis=0)
+    # L_src_norm = np.expand_dims(L_src_norm,axis = 1)
+    # L_trg_norm = np.expand_dims(L_trg_norm,axis = 0)
 
     L_corr = (L_src.T@L_trg)/(L_src_norm@L_trg_norm)
+    L_corr = L_corr.cpu().numpy()
     # print(np.max(1-L_corr),np.min(1-L_corr))
-    L_corr = np.power(np.maximum(L_corr,0),1.0)
+    # L_corr = np.power(np.maximum(L_corr,0),1.0)
 
     row_ind,col_ind = linear_sum_assignment(1-L_corr)
     assert(row_ind.shape[0]==col_ind.shape[0]==G_src.shape[1]==G_trg.shape[1])
@@ -80,11 +92,13 @@ def pca_(src_feats_np,trg_feats_np,src_feat_norms,trg_feat_norms,k):
     L_corr_new = np.zeros((row_ind.shape[0],col_ind.shape[0]))
     L_corr_new[row_ind,col_ind] = 1.0
 
+    sim = G_src@torch.from_numpy(L_corr_new).to(torch.float32).cuda()@G_trg.T/torch.matmul(src_feat_norms, trg_feat_norms)
+
     # print(G_src.dtype,L_corr_new.dtype,G_trg.dtype)
     # print(torch.from_numpy(G_src).dtype,torch.from_numpy(L_corr_new).dtype,torch.from_numpy(G_trg).dtype,src_feat_norms.dtype,trg_feat_norms.dtype)
 
-    sim = torch.from_numpy(G_src).to(torch.float32).cuda()@torch.from_numpy(L_corr_new).to(torch.float32).cuda()@\
-        torch.from_numpy(G_trg.T).to(torch.float32).cuda()/torch.matmul(src_feat_norms, trg_feat_norms)
+    # sim = torch.from_numpy(G_src).to(torch.float32).cuda()@torch.from_numpy(L_corr_new).to(torch.float32).cuda()@\
+    #     torch.from_numpy(G_trg.T).to(torch.float32).cuda()/torch.matmul(src_feat_norms, trg_feat_norms)
     return sim
 
 def kmeans_(src_feats_np,trg_feats_np,src_feat_norms,trg_feat_norms,k):
@@ -107,7 +121,7 @@ def kmeans_(src_feats_np,trg_feats_np,src_feat_norms,trg_feat_norms,k):
     L_trg_norm = np.expand_dims(L_trg_norm,axis = 0)
 
     L_corr = (L_src.T@L_trg)/(L_src_norm@L_trg_norm)
-    L_corr = np.power(np.maximum(L_corr,0),1.0)
+    # L_corr = np.power(np.maximum(L_corr,0),1.0)
 
     row_ind,col_ind = linear_sum_assignment(1-L_corr)
     assert(row_ind.shape[0]==col_ind.shape[0]==G_src.shape[1]==G_trg.shape[1])
@@ -135,7 +149,7 @@ def nmf_(src_feats_np,trg_feats_np,src_feat_norms,trg_feat_norms,k):
     L_trg_norm = np.expand_dims(L_trg_norm,axis = 0)
 
     L_corr = (L_src.T@L_trg)/(L_src_norm@L_trg_norm)
-    L_corr = np.power(np.maximum(L_corr,0),1.0)
+    # L_corr = np.power(np.maximum(L_corr,0),1.0)
 
     row_ind,col_ind = linear_sum_assignment(1-L_corr)
     
@@ -175,7 +189,7 @@ def appearance_similarityOT(src_feats, trg_feats, k, factorization, exp1=1.0, ex
     trg_feats_np = trg_feats.cpu().numpy()
 
     if factorization == 'PCA':
-        sim = pca_(src_feats_np,trg_feats_np,src_feat_norms,trg_feat_norms,k)
+        sim = pca_(src_feats,trg_feats,src_feat_norms,trg_feat_norms,k)
     elif factorization == 'KMeans':
         sim = kmeans_(src_feats_np,trg_feats_np,src_feat_norms,trg_feat_norms,k)
     elif factorization == 'No':

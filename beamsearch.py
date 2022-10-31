@@ -41,7 +41,8 @@ def log_selected(depth, membuf_topk):
 
 
 def beamsearch_hp(datapath, benchmark, backbone, thres, alpha, logpath,
-                  candidate_base, candidate_layers, beamsize, maxdepth, args):
+                  candidate_base, candidate_layers, beamsize, maxdepth, args,factorization='No',k=9,
+                  activation='No',normalization='No'):
     r"""Implementation of beam search for hyperpixel layers"""
 
     # 1. Model, and dataset initialization
@@ -57,7 +58,8 @@ def beamsearch_hp(datapath, benchmark, backbone, thres, alpha, logpath,
         start = time.time()
         hyperpixel = parse_layers(base)
         score = evaluate_map_CAM.run(datapath, benchmark, backbone, thres, alpha,
-                             hyperpixel, logpath, args, True, model, dataloader)
+                             hyperpixel, factorization,activation,normalization,k,
+                             logpath, args, True, model, dataloader)
         log_evaluation(base, score, time.time() - start)
         membuf_cand.append((score, base))
     membuf_topk = find_topk(membuf_cand, beamsize)
@@ -76,7 +78,8 @@ def beamsearch_hp(datapath, benchmark, backbone, thres, alpha, logpath,
                         break
                     hyperpixel = parse_layers(test_layers)
                     score = evaluate_map_CAM.run(datapath, benchmark, backbone, thres, alpha,
-                                         hyperpixel, logpath, args, True, model, dataloader)
+                                         hyperpixel, factorization,activation,normalization,k,
+                                          logpath, args, True, model, dataloader)
 
                     log_evaluation(test_layers, score, time.time() - start)
                     membuf_cand.append((score, test_layers))
@@ -117,11 +120,16 @@ if __name__ == '__main__':
     parser.add_argument('--classmap', type=int, default=1, help='class activation map: 0 for none, 1 for using CAM')
     parser.add_argument('--cam', type=str, default='', help='activation map folder, empty for end2end computation')
 
+    parser.add_argument('--facorization',type=str,default='No',help='Choose the factorization methods you want to visualize, PCA,NMF,or Kmeans')
+    parser.add_argument('--k',type=int,default=9, help='dimension of the factorized matrix M (X=L@M.T)')
+    parser.add_argument('--activation',type=str,default='No', help='decide whether to apply a ReLU application to the hyperfeats')
+    parser.add_argument('--normalization',type=str,default='No', help='decide whether to apply a mutual mean normalization to the hyperfeats')
+
     args = parser.parse_args()
     os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
 
     # 1. Candidate layers for hyperpixel initialization
-    n_layers = {'resnet50': 17, 'resnet101': 34, 'fcn101': 34}
+    n_layers = {'resnet50': 17, 'resnet101': 34, 'fcn101': 34,'resnet50_simsiam': 17, 'resnet50_densecl_IN': 17, 'resnet50_densecl_COCO': 17,'resnet101_densecl_IN':34}
     candidate_base = [[i] for i in range(args.beamsize)]
     candidate_layers = list(range(n_layers[args.backbone]))
 

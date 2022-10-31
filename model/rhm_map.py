@@ -57,9 +57,45 @@ def appearance_similarity(src_feats, trg_feats, exp1=3):
     return sim
 
 def pca_(src_feats,trg_feats,src_feat_norms,trg_feat_norms,k):
-    # pca_src = PCA(n_components=k)
-    # pca_trg = PCA(n_components=k)
 
+    '''pca+hungarian matching with L=XG'''
+    '''
+    pca_src = PCA(n_components=k)
+    pca_trg = PCA(n_components=k)
+    pca_src.fit(src_feats)
+    pca_trg.fit(trg_feats)
+
+    GT_src = pca_src.components_ #k*C
+    L_src = src_feats@GT_src.T #(HW*C)@(C*k)-->HW*k
+    GT_trg = pca_trg.components_ #k*c
+    L_trg = trg_feats@GT_trg.T
+
+    # print(GT_src.shape,L_src.shape,GT_trg.shape,L_trg.shape)
+    print(GT_src@GT_src.T)
+    # L_src_norm = np.linalg.norm(L_src, ord=2, axis=0)
+    # L_trg_norm = np.linalg.norm(L_trg, ord=2, axis=0)
+    # L_src_norm = np.expand_dims(L_src_norm,axis = 1)
+    # L_trg_norm = np.expand_dims(L_trg_norm,axis = 0)
+    GT_src_norm = np.linalg.norm(GT_src, ord=2, axis=1)
+    GT_trg_norm = np.linalg.norm(GT_trg, ord=2, axis=1)
+    GT_src_norm = np.expand_dims(GT_src_norm,axis = 1)
+    GT_trg_norm = np.expand_dims(GT_trg_norm,axis = 0)
+
+    G_corr = (GT_src@GT_trg.T)/(GT_src_norm@GT_trg_norm)
+    print(np.max(G_corr),np.min(G_corr))
+
+    row_ind,col_ind = linear_sum_assignment(1-G_corr)
+    assert(row_ind.shape[0]==col_ind.shape[0]==L_src.shape[1]==L_trg.shape[1])
+    L_trg = L_trg[:,col_ind]
+    G_corr_new = np.zeros((row_ind.shape[0],col_ind.shape[0]))
+    G_corr_new[row_ind,col_ind] = 1.0
+
+    sim = torch.from_numpy(L_src).to(torch.float32).cuda()@torch.from_numpy(G_corr_new).to(torch.float32).cuda()@\
+        torch.from_numpy(L_trg.T).to(torch.float32).cuda()/torch.matmul(src_feat_norms, trg_feat_norms)
+
+    '''
+
+    ##svd 
     U_src,S_src,Vh_src = torch.linalg.svd(src_feats.T) # src_feats:HW*C --> src_feats.T:C*HW
     L_src = U_src[:,0:k]@torch.diag(S_src[0:k])
     G_src = Vh_src[0:k,:].T
@@ -67,8 +103,10 @@ def pca_(src_feats,trg_feats,src_feat_norms,trg_feat_norms,k):
     L_trg = U_trg[:,0:k]@torch.diag(S_trg[0:k])
     G_trg = Vh_trg[0:k,:].T
 
-    L_src_norm = torch.norm(L_src, p=2, dim=0).unsqueeze(1)
-    L_trg_norm = torch.norm(L_trg, p=2, dim=0).unsqueeze(0)
+
+    #Compute norm for hungarian matching
+    # L_src_norm = torch.norm(L_src, p=2, dim=0).unsqueeze(1)
+    # L_trg_norm = torch.norm(L_trg, p=2, dim=0).unsqueeze(0)
 
 
     # G_src = pca_src.fit_transform(src_feats) ##HW*k
@@ -81,24 +119,41 @@ def pca_(src_feats,trg_feats,src_feat_norms,trg_feat_norms,k):
     # L_src_norm = np.expand_dims(L_src_norm,axis = 1)
     # L_trg_norm = np.expand_dims(L_trg_norm,axis = 0)
 
-    L_corr = (L_src.T@L_trg)/(L_src_norm@L_trg_norm)
-    L_corr = L_corr.cpu().numpy()
+    # L_corr = (L_src.T@L_trg)/(L_src_norm@L_trg_norm)
+    # L_corr = L_corr.cpu().numpy()
+
+    ##construct cost matrix for Hungarian matching
     # print(np.max(1-L_corr),np.min(1-L_corr))
     # L_corr = np.power(np.maximum(L_corr,0),1.0)
 
-    row_ind,col_ind = linear_sum_assignment(1-L_corr)
-    assert(row_ind.shape[0]==col_ind.shape[0]==G_src.shape[1]==G_trg.shape[1])
-    G_trg = G_trg[:,col_ind]
-    L_corr_new = np.zeros((row_ind.shape[0],col_ind.shape[0]))
-    L_corr_new[row_ind,col_ind] = 1.0
+    # row_ind,col_ind = linear_sum_assignment(1-L_corr)
+    # assert(row_ind.shape[0]==col_ind.shape[0]==G_src.shape[1]==G_trg.shape[1])
+    # G_trg = G_trg[:,col_ind]
+    # L_corr_new = np.zeros((row_ind.shape[0],col_ind.shape[0]))
+    # L_corr_new[row_ind,col_ind] = 1.0
 
-    sim = G_src@torch.from_numpy(L_corr_new).to(torch.float32).cuda()@G_trg.T/torch.matmul(src_feat_norms, trg_feat_norms)
+
+    #home for svd and hungarian matching with L = U@torch.diag(S) and G = Vh.T
+    # sim = G_src@torch.from_numpy(L_corr_new).to(torch.float32).cuda()@G_trg.T/torch.matmul(src_feat_norms, trg_feat_norms)
 
     # print(G_src.dtype,L_corr_new.dtype,G_trg.dtype)
     # print(torch.from_numpy(G_src).dtype,torch.from_numpy(L_corr_new).dtype,torch.from_numpy(G_trg).dtype,src_feat_norms.dtype,trg_feat_norms.dtype)
 
+    ##sim for pca+hungarian matching
     # sim = torch.from_numpy(G_src).to(torch.float32).cuda()@torch.from_numpy(L_corr_new).to(torch.float32).cuda()@\
     #     torch.from_numpy(G_trg.T).to(torch.float32).cuda()/torch.matmul(src_feat_norms, trg_feat_norms)
+    
+
+
+
+
+    '''To do: try reconstruction mathods later'''
+    src_feats_recon = L_src@G_src.T
+    trg_feats_recon = L_trg@G_trg.T
+    sim = sim = torch.matmul(src_feats_recon.t(), trg_feats_recon) / \
+            torch.matmul(src_feat_norms, trg_feat_norms)
+    
+    
     return sim
 
 def kmeans_(src_feats_np,trg_feats_np,src_feat_norms,trg_feat_norms,k):
@@ -115,6 +170,13 @@ def kmeans_(src_feats_np,trg_feats_np,src_feat_norms,trg_feat_norms,k):
     G_trg[HW_trg,km_trg.labels_[HW_trg]] = 1.0
     L_trg = km_trg.cluster_centers_.T ##C*k
 
+    src_feats_recon = torch.from_numpy(G_src).to(torch.float32).cuda()@torch.from_numpy(L_src.T).to(torch.float32).cuda()
+    trg_feats_recon = torch.from_numpy(G_trg).to(torch.float32).cuda()@torch.from_numpy(L_trg.T).to(torch.float32).cuda()
+
+    sim = sim = torch.matmul(src_feats_recon, trg_feats_recon.t()) / \
+            torch.matmul(src_feat_norms, trg_feat_norms)
+
+    '''
     L_src_norm = np.linalg.norm(L_src, ord=2, axis=0)
     L_trg_norm = np.linalg.norm(L_trg, ord=2, axis=0)
     L_src_norm = np.expand_dims(L_src_norm,axis = 1)
@@ -132,17 +194,25 @@ def kmeans_(src_feats_np,trg_feats_np,src_feat_norms,trg_feat_norms,k):
 
     sim = torch.from_numpy(G_src).to(torch.float32).cuda()@torch.from_numpy(L_corr_new).to(torch.float32).cuda()@\
         torch.from_numpy(G_trg.T).to(torch.float32).cuda()/torch.matmul(src_feat_norms, trg_feat_norms)
+    '''
     return sim
 
 def nmf_(src_feats_np,trg_feats_np,src_feat_norms,trg_feat_norms,k):
-    nmf_src = NMF(n_components=k)
-    nmf_trg = NMF(n_components=k)
+    nmf_src = NMF(n_components=k,max_iter=500)
+    nmf_trg = NMF(n_components=k,max_iter=500)
 
     G_src = nmf_src.fit_transform(src_feats_np)  ##HW*k
     L_src = nmf_src.components_.T ##C*k
     G_trg = nmf_trg.fit_transform(trg_feats_np)  ##HW*k
     L_trg = nmf_trg.components_.T ##C*k
 
+    src_feats_recon = torch.from_numpy(G_src).to(torch.float32).cuda()@torch.from_numpy(L_src.T).to(torch.float32).cuda()
+    trg_feats_recon = torch.from_numpy(G_trg).to(torch.float32).cuda()@torch.from_numpy(L_trg.T).to(torch.float32).cuda()
+    sim = sim = torch.matmul(src_feats_recon, trg_feats_recon.t()) / \
+            torch.matmul(src_feat_norms, trg_feat_norms)
+
+
+    '''
     L_src_norm = np.linalg.norm(L_src, ord=2, axis=0)
     L_trg_norm = np.linalg.norm(L_trg, ord=2, axis=0)
     L_src_norm = np.expand_dims(L_src_norm,axis = 1)
@@ -160,6 +230,7 @@ def nmf_(src_feats_np,trg_feats_np,src_feat_norms,trg_feat_norms,k):
 
     sim = torch.from_numpy(G_src).to(torch.float32).cuda()@torch.from_numpy(L_corr_new).to(torch.float32).cuda()@\
         torch.from_numpy(G_trg.T).to(torch.float32).cuda()/torch.matmul(src_feat_norms, trg_feat_norms)
+    '''
     return sim
 
 
@@ -179,6 +250,11 @@ def appearance_similarityOT(src_feats, trg_feats, k, factorization, exp1=1.0, ex
         multual_mean = (src_mean*src_feats.shape[0]+trg_mean*trg_feats.shape[0])/(src_feats.shape[0]+trg_feats.shape[0])
         src_feats = src_feats-multual_mean
         trg_feats = trg_feats-multual_mean
+    elif normalization == 'Single':
+        src_mean = torch.mean(src_feats,dim=0)
+        trg_mean = torch.mean(trg_feats,dim=0)
+        src_feats = src_feats-src_mean
+        trg_feats = trg_feats-trg_mean
     
 
     ##The norm should be computed along channel(C). So each hyper-pixel should be normalized with a specific norm

@@ -552,20 +552,25 @@ class SCOT_CAM:
         GT_list = []
         L_list = []
         for k in k_list:
-            # pca = PCA(n_components=k)
+            pca = PCA(n_components=k)
             # pca.fit(hyperfeats)
             # G = pca.transform(hyperfeats)
             # singular_values = pca.singular_values_
             # print(singular_values)
             # print(G)
+
+            '''
             U,S,Vh = np.linalg.svd(hyperfeats.T)
             L = U[:,0:k]@np.diag(S[0:k])
-            G = Vh[0:k].T
+            G = Vh[0:k,:].T
+            '''
 
 
-            # G = pca.fit_transform(hyperfeats) #G shape: HW*k
-            # # L = hyperfeats.T @ np.linalg.pinv(G.T)
-            # L = pca.components_.T  #C*k
+            G = pca.fit_transform(hyperfeats) #G shape: HW*k
+            # L = hyperfeats.T @ np.linalg.pinv(G.T)
+            L = pca.components_.T  #C*k
+
+            
             
             # print(np.linalg.norm(L-hyperfeats.T @ np.linalg.pinv(G.T)))
             # print(np.linalg.norm(L))

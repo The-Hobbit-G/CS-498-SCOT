@@ -49,7 +49,7 @@ def run(datapath, benchmark, backbone, thres, alpha, hyperpixel, factorization,a
     assert(factorization in factorization_list)
     activation_list = ['ReLU','No']
     assert (activation in activation_list)
-    normalization_list = ['Mutual','No']
+    normalization_list = ['Mutual','No','Single']
     assert(normalization in normalization_list)
 
 

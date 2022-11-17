@@ -272,6 +272,9 @@ class SCOT_CAM:
 
         return confidence_ts, src_hyperpixels[0], trg_hyperpixels[0]
 
+        ##try removing RHM
+        # return OT_mat, src_hyperpixels[0], trg_hyperpixels[0]
+
     def visualize_sim(self,sample,idx,maptype,exp1,exp2,eps,savepath,backbone="resnet101",sim='All',simi='OT',choice='cross'):
         """Given two images(src & trg), the backbone and the sim choice, visualize sim(backbone(src).T @ backbone(trg))"""
         src_img = sample['src_img']
@@ -807,7 +810,7 @@ class SCOT_CAM:
         hpgeometry = geometry.receptive_fields(rfsz, jsz, hyperfeats.size()).to(self.device)
         
         hyperfeats_orisize = copy.deepcopy(hyperfeats)
-        hyperfeats = hyperfeats.view(hyperfeats.size()[0], -1).t() ##heperfeats size: (3136,50,75)->(3136,3750)->(3750,3136)
+        hyperfeats = hyperfeats.view(hyperfeats.size()[0], -1).t() ##heperfeats size: (3136,50,75)->(3136,3750)->(3750,3136)=(HW,C)
 
         # Prune boxes on margins (Otherwise may cause error)
         if self.benchmark in ['TSS']:

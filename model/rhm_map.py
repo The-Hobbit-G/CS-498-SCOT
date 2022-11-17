@@ -9,10 +9,12 @@ import numpy as np
 import torch.nn.functional as F
 import torch
 
-from sklearn.cluster import KMeans
+# from sklearn.cluster import KMeans
 from sklearn.decomposition import PCA
 from sklearn.decomposition import NMF
 from scipy.optimize import linear_sum_assignment
+
+from kmeans_pytorch import kmeans
 
 from . import geometry
 

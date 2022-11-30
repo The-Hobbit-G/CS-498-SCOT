@@ -23,6 +23,13 @@ from . import resnet
 from . import simsiam
 from data.dataset import Normalize, UnNormalize
 from scipy.optimize import linear_sum_assignment
+from .clip import *
+
+
+clip_urls = {
+    'resnet50_clip': '/sinergia/2022-fall-sp-jiguo/pretrained/CLIP_RN50.pt',
+    'resnet101_clip': '/sinergia/2022-fall-sp-jiguo/pretrained/CLIP_RN101.pt',
+}
 
 
 def tensor_to_np(tensor):
@@ -79,6 +86,23 @@ class SCOT_CAM:
         elif backbone == 'resnet101_densecl_IN':
             self.backbone = resnet.resnet101_densecl(pretrained=True).to(device)
             nbottlenecks = [3, 4, 23, 3]
+
+        elif backbone == 'resnet50_clip':
+            clip50_dict = torch.jit.load(clip_urls[backbone],map_location=device).state_dict()
+            clip50 = build_model(clip50_dict).to(device)
+            self.backbone1 = clip50.visual.to(device)
+            self.backbone1.eval()
+            self.backbone = resnet.resnet50(pretrained=True).to(device) ##in order to get fixed fc layers for extracting CAM
+            nbottlenecks = [3, 4, 6, 3]
+
+        elif backbone == 'resnet101_clip':
+            clip101_dict = torch.jit.load(clip_urls[backbone],map_location=device).state_dict()
+            clip101 = build_model(clip101_dict).to(device)
+            self.backbone1 = clip101.visual.to(device)
+            self.backbone1.eval()
+            self.backbone = resnet.resnet101(pretrained=True).to(device) ##in order to get fixed fc layers for extracting CAM
+            nbottlenecks = [3, 4, 23, 3]
+    
         else:
             raise Exception('Unavailable backbone: %s' % backbone)
         self.bottleneck_ids = reduce(add, list(map(lambda x: list(range(x)), nbottlenecks)))
@@ -90,7 +114,7 @@ class SCOT_CAM:
         # (the jump and receptive field sizes for 'fcn101' are heuristic values)
         self.hyperpixel_ids = util.parse_hyperpixel(hyperpixel_ids) #string -> int
         #self.jsz = jump size, self.rfsz = receptive field size
-        if backbone in ['resnet50', 'resnet101','resnet50_simsiam','resnet50_densecl_IN','resnet50_densecl_COCO','resnet101_densecl_IN']:
+        if backbone in ['resnet50', 'resnet101','resnet50_simsiam','resnet50_densecl_IN','resnet50_densecl_COCO','resnet101_densecl_IN','resnet50_clip','resnet101_clip']:
             ##For ResNet the jump size(stride) in the feature map of the final convolutional layer is 16
             self.jsz = torch.tensor([4, 4, 4, 4, 8, 8, 8, 8, 16, 16]).to(device)
             self.rfsz = torch.tensor([11, 19, 27, 35, 43, 59, 75, 91, 107, 139]).to(device)
@@ -802,6 +826,8 @@ class SCOT_CAM:
         ###feat_map_fix,fc_fix are generated to fix the CAM(The CAM should always come from SCOT with resnet50 pretrained on ImageNet in a supervised way as backbone)
         if backbone in ['resnet101','resnet101_densecl_IN']:
             _, _, _, feat_map_fix, fc_fix = self.extract_intermediate_feat(img.unsqueeze(0), return_hp=True, backbone='resnet101')
+        elif backbone in ['resnet101_clip','resnet50_clip']:
+            feat_map_fix, fc_fix = feat_map, fc
         else:
             _, _, _, feat_map_fix, fc_fix = self.extract_intermediate_feat(img.unsqueeze(0), return_hp=True, backbone='resnet50')
         
@@ -809,7 +835,8 @@ class SCOT_CAM:
         # print('max and min of hyperfeats are: {},{}'.format(torch.max(hyperfeats),torch.min(hyperfeats)))
         hpgeometry = geometry.receptive_fields(rfsz, jsz, hyperfeats.size()).to(self.device)
         
-        hyperfeats_orisize = copy.deepcopy(hyperfeats)
+        # hyperfeats_orisize = copy.deepcopy(hyperfeats)
+        hyperfeats_orisize = hyperfeats
         hyperfeats = hyperfeats.view(hyperfeats.size()[0], -1).t() ##heperfeats size: (3136,50,75)->(3136,3750)->(3750,3136)=(HW,C)
 
         # Prune boxes on margins (Otherwise may cause error)
@@ -853,7 +880,25 @@ class SCOT_CAM:
         rfsz = self.rfsz[self.hyperpixel_ids[0]]
         jsz = self.jsz[self.hyperpixel_ids[0]]
         #The receptive field size and the jump size are decided by the first layer in the hyperpixel id(the shallowest one)
+        #Because all the other hyperpixels will be resized into the same size with the first hyperpixel layer
 
+        '''Add the clip backbone'''
+        '''
+        remember that the rfsz, jsz are fixed, we don't have to care about them
+        featmap,fc are the output of the final cov layers and the fc layers respectively and they are only useful
+        for constructing the CAM. Since we wanna fix our CAM with the resnet imagenet supervised trained one, we should
+        fix the featmap and fc as well, which means when we use clip backbone, they should be generated from the 
+        self.backbone1 instead of self.backbone
+        '''
+
+        clip_feats = []
+        if backbone in ['resnet50_clip','resnet101_clip']:
+            hook,layers = util.hook_model(self.backbone1)
+            self.backbone1(img)
+
+
+
+        #For resnet part
         # Layer 0
         feat = self.backbone.conv1.forward(img)
         feat = self.backbone.bn1.forward(feat)
@@ -861,6 +906,10 @@ class SCOT_CAM:
         feat = self.backbone.maxpool.forward(feat)
         if 0 in self.hyperpixel_ids:
             feats.append(feat.clone())
+            if backbone in ['resnet50_clip','resnet101_clip']:
+                assert(list(layers.keys())[9]=='avgpool')
+                clip_feat = hook(list(layers.keys())[9])
+                clip_feats.append(clip_feat)
 
         # Layer 1-4
         for hid, (bid, lid) in enumerate(zip(self.bottleneck_ids, self.layer_ids)):
@@ -883,6 +932,18 @@ class SCOT_CAM:
                 feats.append(feat.clone())
                 #if hid + 1 == max(self.hyperpixel_ids):
                 #    break
+                if backbone in ['resnet50_clip','resnet101_clip']:
+                    layer_name = 'layer'+str(lid)+'-'+str(bid)+'-bn3'
+                    assert(layer_name in layers.keys())
+                    clip_feat = hook(layer_name)
+                    if bid == 0:
+                        res_name = 'layer'+str(lid)+'-'+str(bid)+'-downsample'
+                        assert(res_name in layers.keys())
+                        clip_res = hook(res_name)
+                        clip_feat += clip_res
+                    clip_feats.append(clip_feat)
+
+
             feat = self.backbone.__getattr__('layer%d' % lid)[bid].relu.forward(feat)
 
         # GAP feature map
@@ -897,20 +958,38 @@ class SCOT_CAM:
         if not return_hp: # only return feat_map and fc
             return feat_map,fc
 
-        # Up-sample & concatenate features to construct a hyperimage
-        for idx, feat in enumerate(feats):
-            if idx == 0:
-                continue
-            feats[idx] = F.interpolate(feat, tuple(feats[0].size()[2:]), None, 'bilinear', True)
-        feats = torch.cat(feats, dim=1)
+        
         ## feats.size() = (1 ,channels, h, w)  eg:(1,3136,50,75)
         ## So if we return feats[0], we will get an extracted feature map with size (3136, 50, 75) 
         # and this feature map is gotten by upsampling stacking the feature maps selected layers
         # In this way, we can make use of the multi-level representations
+        if backbone in ['resnet50_clip','resnet101_clip']:
+            for idx, clip_feat in enumerate(clip_feats):
+                if idx == 0:
+                    continue
+                clip_feats[idx] = F.interpolate(clip_feat, tuple(clip_feats[0].size()[2:]), None, 'bilinear', True)
+            clip_feats = torch.cat(clip_feats,dim=1)
+            clip_feats = clip_feats.type(torch.float32)
+            # print(clip_feats.dtype)
 
-        # print('****feats size:{}'.format(feats.size()))
+            # print('clip_feats size:{}'.format(clip_feats.size()))
 
-        return feats[0], rfsz, jsz, feat_map, fc
+            return clip_feats[0],rfsz, jsz, feat_map, fc
+        else:
+            # Up-sample & concatenate features to construct a hyperimage
+            for idx, feat in enumerate(feats):
+                if idx == 0:
+                    continue
+                feats[idx] = F.interpolate(feat, tuple(feats[0].size()[2:]), None, 'bilinear', True)
+            feats = torch.cat(feats, dim=1)
+            # print('****feats size:{}'.format(feats.size()))
+            return feats[0], rfsz, jsz, feat_map, fc
+
+        
+        
+
+
+        
     
 
     def get_CAM(self, feat_map, fc, sz, top_k=2):

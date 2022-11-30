@@ -17,7 +17,7 @@ def receptive_fields(rfsz, jsz, feat_size):
     width = feat_size[2]
     height = feat_size[1]
 
-    feat_ids = torch.tensor(list(range(width))).repeat(1, height).t().repeat(1, 2)
+    feat_ids = torch.tensor(list(range(width))).repeat(1, height).t().repeat(1, 2).cuda()
     feat_ids[:, 0] = torch.tensor(list(range(height))).unsqueeze(1).repeat(1, width).view(-1)
 
     box = torch.zeros(feat_ids.size()[0], 4)

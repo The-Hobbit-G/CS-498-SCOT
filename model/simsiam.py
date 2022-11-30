@@ -17,9 +17,9 @@ except ImportError:
 
 
 model_urls = {
-    'simsiam_256bs': '/home/jianting/SCOT/model/pretrained/checkpoint_0099_256bs.pth.tar',
-    'simsiam_512bs': '/home/jianting/SCOT/model/pretrained/checkpoint_0099_512bs.pth.tar',
-    'resnet50': '/home/jianting/SCOT/model/pretrained/resnet50-19c8e357.pth',
+    'simsiam_256bs': '/sinergia/2022-fall-sp-jiguo/pretrained/checkpoint_0099_256bs.pth.tar',
+    'simsiam_512bs': '/sinergia/2022-fall-sp-jiguo/pretrained/checkpoint_0099_512bs.pth.tar',
+    'resnet50': '/sinergia/2022-fall-sp-jiguo/pretrained/resnet50-19c8e357.pth',
 }
 
 

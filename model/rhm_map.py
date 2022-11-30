@@ -11,10 +11,11 @@ import torch
 
 from sklearn.cluster import KMeans
 from sklearn.decomposition import PCA
-from sklearn.decomposition import NMF
+# from sklearn.decomposition import NMF
 from scipy.optimize import linear_sum_assignment
 
 from kmeans_pytorch import kmeans
+from torchnmf.nmf import NMF
 
 from . import geometry
 
@@ -29,6 +30,7 @@ def perform_sinkhorn(C,epsilon,mu,nu,a=[],warm=False,niter=1,tol=10e-9):
 
     Err = torch.zeros((niter,2)).cuda()
     for i in range(niter):
+        # print(nu.dtype,K.dtype,a.dtype)
         b = nu/torch.mm(K.t(), a)
         if i%2==0:
             Err[i,0] = torch.norm(a*(torch.mm(K, b)) - mu, p=1)
@@ -159,8 +161,25 @@ def pca_(src_feats,trg_feats,src_feat_norms,trg_feat_norms,k):
     return sim
 
 def kmeans_(src_feats_np,trg_feats_np,src_feat_norms,trg_feat_norms,k):
-    km_src = KMeans(n_clusters=k,max_iter=500).fit(src_feats_np)
-    km_trg = KMeans(n_clusters=k,max_iter=500).fit(trg_feats_np)
+
+
+    U_src,S_src,Vh_src = torch.linalg.svd(src_feats_np.T) # src_feats:HW*C --> src_feats.T:C*HW
+    L_src_svd = U_src[:,0:k]@torch.diag(S_src[0:k])
+    G_src_svd = Vh_src[0:k,:].T
+    U_trg,S_trg,Vh_trg = torch.linalg.svd(trg_feats_np.T) # src_feats:HW*C --> src_feats.T:C*HW
+    L_trg_svd = U_trg[:,0:k]@torch.diag(S_trg[0:k])
+    G_trg_svd = Vh_trg[0:k,:].T
+
+    src_feats_np = src_feats_np.cpu().numpy()
+    trg_feats_np = trg_feats_np.cpu().numpy()
+    L_src_svd = L_src_svd.cpu().numpy() #C*k
+    L_trg_svd = L_trg_svd.cpu().numpy()
+
+    # print(L_src_svd.shape,L_trg_svd.shape)
+
+    
+    km_src = KMeans(n_clusters=k,init=L_src_svd.T,max_iter=500).fit(src_feats_np)
+    km_trg = KMeans(n_clusters=k,init=L_trg_svd.T,max_iter=500).fit(trg_feats_np)
 
     HW_src = np.arange(km_src.labels_.shape[0])
     HW_trg = np.arange(km_trg.labels_.shape[0])
@@ -174,6 +193,28 @@ def kmeans_(src_feats_np,trg_feats_np,src_feat_norms,trg_feat_norms,k):
 
     src_feats_recon = torch.from_numpy(G_src).to(torch.float32).cuda()@torch.from_numpy(L_src.T).to(torch.float32).cuda()
     trg_feats_recon = torch.from_numpy(G_trg).to(torch.float32).cuda()@torch.from_numpy(L_trg.T).to(torch.float32).cuda()
+    
+    '''
+   
+    ##Pytorch implementation of kmeans using gpu
+    km_src_ids, km_src_centers = kmeans(X=src_feats_np,num_clusters=k,distance='euclidean', device=torch.device('cuda:0'))
+    km_trg_ids, km_trg_centers = kmeans(X=trg_feats_np,num_clusters=k,distance='euclidean', device=torch.device('cuda:0'))
+    #ids.shape:HW;  centers.shape:k*C, so we need to turn ids to HW*k
+    HW_src = torch.arange(km_src_ids.shape[0])
+    HW_trg = torch.arange(km_trg_ids.shape[0])
+
+    G_src = torch.zeros(km_src_ids.shape[0],k).cuda()
+    G_src[HW_src,km_src_ids[HW_src]]=1.0
+    L_src = km_src_centers.T
+    L_src = L_src.cuda()
+    G_trg = torch.zeros(km_trg_ids.shape[0],k).cuda()
+    G_trg[HW_trg,km_trg_ids[HW_trg]]=1.0
+    L_trg = km_trg_centers.T
+    L_trg = L_trg.cuda()
+
+    src_feats_recon = G_src@L_src.T
+    trg_feats_recon = G_trg@L_trg.T
+    '''
 
     sim = sim = torch.matmul(src_feats_recon, trg_feats_recon.t()) / \
             torch.matmul(src_feat_norms, trg_feat_norms)
@@ -200,6 +241,8 @@ def kmeans_(src_feats_np,trg_feats_np,src_feat_norms,trg_feat_norms,k):
     return sim
 
 def nmf_(src_feats_np,trg_feats_np,src_feat_norms,trg_feat_norms,k):
+
+    '''
     nmf_src = NMF(n_components=k,max_iter=500)
     nmf_trg = NMF(n_components=k,max_iter=500)
 
@@ -212,6 +255,60 @@ def nmf_(src_feats_np,trg_feats_np,src_feat_norms,trg_feat_norms,k):
     trg_feats_recon = torch.from_numpy(G_trg).to(torch.float32).cuda()@torch.from_numpy(L_trg.T).to(torch.float32).cuda()
     sim = sim = torch.matmul(src_feats_recon, trg_feats_recon.t()) / \
             torch.matmul(src_feat_norms, trg_feat_norms)
+    '''
+
+
+
+
+    ##pytorch implementation of nmf
+
+    #svd as a good initialization
+    # U_src,S_src,Vh_src = torch.linalg.svd(src_feats_np.T) # src_feats:HW*C --> src_feats.T:C*HW
+    # L_src = U_src[:,0:k]@torch.diag(S_src[0:k]) #C*k
+    # G_src = Vh_src[0:k,:].T   #HW*k
+    # U_trg,S_trg,Vh_trg = torch.linalg.svd(trg_feats_np.T) # src_feats:HW*C --> src_feats.T:C*HW
+    # L_trg = U_trg[:,0:k]@torch.diag(S_trg[0:k])
+    # G_trg = Vh_trg[0:k,:].T
+
+
+    # src_feats_np.requires_grad=True
+    # trg_feats_np.requires_grad=True
+
+    # print(src_feats_np.grad_fn,trg_feats_np.grad_fn)
+
+    # src_feats_np.grad_fn = 0
+    # trg_feats_np.grad_fn = 0
+    # src_feats_np = src_feats_np + 1e-5
+    # src_feats_np = src_feats_np - 1e-5
+    # trg_feats_np = trg_feats_np + 1e-5
+    # trg_feats_np = trg_feats_np - 1e-5
+    
+
+    # print(src_feats_np.grad_fn,trg_feats_np.grad_fn)
+
+    # nmf_src = NMF(src_feats_np.shape,rank=k,W=L_src,H=G_src).cuda()
+    # nmf_trg = NMF(trg_feats_np.shape,rank=k,W=L_trg,H=G_trg).cuda()
+    nmf_src = NMF(src_feats_np.shape,rank=k).cuda()
+    nmf_trg = NMF(trg_feats_np.shape,rank=k).cuda()
+    nmf_src.fit(src_feats_np,max_iter=300)
+    nmf_trg.fit(trg_feats_np,max_iter=300)
+    G_src_nmf = nmf_src.H #HW*k
+    L_src_nmf = nmf_src.W #C*k
+    G_trg_nmf = nmf_trg.H #HW*k
+    L_trg_nmf = nmf_trg.W #C*k
+
+    G_src_nmf = G_src_nmf.cuda()
+    L_src_nmf = L_src_nmf.cuda()
+    G_trg_nmf = G_trg_nmf.cuda()
+    L_trg_nmf = L_trg_nmf.cuda()
+
+    src_feats_recon = G_src_nmf@L_src_nmf.T
+    trg_feats_recon = G_trg_nmf@L_trg_nmf.T
+    sim = sim = torch.matmul(src_feats_recon, trg_feats_recon.t()) / \
+            torch.matmul(src_feat_norms, trg_feat_norms)
+
+
+
 
 
     '''
@@ -263,8 +360,11 @@ def appearance_similarityOT(src_feats, trg_feats, k, factorization, exp1=1.0, ex
     src_feat_norms = torch.norm(src_feats, p=2, dim=1).unsqueeze(1)
     trg_feat_norms = torch.norm(trg_feats, p=2, dim=1).unsqueeze(0)
 
-    src_feats_np = src_feats.cpu().numpy()
-    trg_feats_np = trg_feats.cpu().numpy()
+    # src_feats_np = src_feats.cpu().numpy()
+    # trg_feats_np = trg_feats.cpu().numpy()
+
+    src_feats_np = src_feats
+    trg_feats_np = trg_feats
 
     if factorization == 'PCA':
         sim = pca_(src_feats,trg_feats,src_feat_norms,trg_feat_norms,k)
@@ -286,6 +386,7 @@ def appearance_similarityOT(src_feats, trg_feats, k, factorization, exp1=1.0, ex
     Visualize the similarity matrix
     '''
     cost = 1-sim
+    # print(cost.dtype)
 
     n1 = len(src_feats)
     mu = (torch.ones((n1,))/n1).cuda()

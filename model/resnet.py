@@ -17,16 +17,16 @@ __all__ = ['ResNet', 'resnet18', 'resnet34', 'resnet50', 'resnet101',
 model_urls = {
     'resnet18': 'https://download.pytorch.org/models/resnet18-5c106cde.pth',
     'resnet34': 'https://download.pytorch.org/models/resnet34-333f7ec4.pth',
-    'resnet50': '/home/jianting/SCOT/model/pretrained/resnet50-19c8e357.pth',
-    'resnet101': '/home/jianting/SCOT/model/pretrained/resnet101-5d3b4d8f.pth',
+    'resnet50': '/sinergia/2022-fall-sp-jiguo/pretrained/resnet50-19c8e357.pth',
+    'resnet101': '/sinergia/2022-fall-sp-jiguo/pretrained/resnet101-5d3b4d8f.pth',
     'resnet152': 'https://download.pytorch.org/models/resnet152-b121ed2d.pth',
     'resnext50_32x4d': 'https://download.pytorch.org/models/resnext50_32x4d-7cdf4587.pth',
     'resnext101_32x8d': 'https://download.pytorch.org/models/resnext101_32x8d-8ba56ff5.pth',
     'wide_resnet50_2': 'https://download.pytorch.org/models/wide_resnet50_2-95faca4d.pth',
     'wide_resnet101_2': 'https://download.pytorch.org/models/wide_resnet101_2-32ee1156.pth',
-    'resnet50_densecl_IM200ep': '/home/jianting/SCOT/model/pretrained/densecl_r50_imagenet_200ep.pth',
-    'resnet101_densecl_IM200ep': '/home/jianting/SCOT/model/pretrained/densecl_r101_imagenet_200ep.pth',
-    'resnet50_densecl_COCO1600ep': '/home/jianting/SCOT/model/pretrained/densecl_r50_coco_1600ep.pth',
+    'resnet50_densecl_IM200ep': '/sinergia/2022-fall-sp-jiguo/pretrained/densecl_r50_imagenet_200ep.pth',
+    'resnet101_densecl_IM200ep': '/sinergia/2022-fall-sp-jiguo/pretrained/densecl_r101_imagenet_200ep.pth',
+    'resnet50_densecl_COCO1600ep': '/sinergia/2022-fall-sp-jiguo/pretrained/densecl_r50_coco_1600ep.pth',
 }
 
 

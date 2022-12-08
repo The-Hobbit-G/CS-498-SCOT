@@ -71,7 +71,7 @@ def run(datapath, benchmark, backbone, thres, alpha, hyperpixel,
 
     data['alpha'] = alpha
 
-    savepath = '/sinergia/2022-fall-sp-jiguo/SCOT/visualization/sim_example/'
+    savepath = '/scratch/2022-fall-sp-jiguo/SCOT/visualization/sim_example/'
     visual_mat_list = ['Correlation' ,'OT','RHM','All']
     assert(visual_mat in visual_mat_list)
     choice_list = ['cross','self']

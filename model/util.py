@@ -5,6 +5,7 @@ import re
 
 import torch.nn.functional as F
 import torch
+import time
 
 ### Hook the models
 from collections import OrderedDict
@@ -16,8 +17,10 @@ class ModuleHook:
         self.features = None
 
     def hook_fn(self, module, input, output):
+        tic = time.time()
         self.module = module
         self.features = output
+        # print(f'hook_fn time {time.time()-tic}')
 
     def close(self):
         self.hook.remove()
@@ -44,8 +47,12 @@ def hook_model(model, include_class_name=False):
     hook_layers(model)
 
     def hook(layer):
+        tic_1 = time.time()
         assert layer in features, f"Invalid layer {layer}. Retrieve the list of layers with `lucent.modelzoo.util.get_model_layers(model)`."
+        tic_2 = time.time()
+        # print(f'assert time {tic_2-tic_1}')
         out = features[layer].features
+        
         assert out is not None, "There are no saved feature maps. Make sure to put the model in eval mode, like so: `model.to(device).eval()`. See README for example."
         return out
 

@@ -20,6 +20,7 @@ def run(datapath, benchmark, backbone, thres, alpha, hyperpixel, factorization,a
         logpath, args, beamsearch=False, model=None, dataloader=None):
     r"""Runs Semantic Correspondence as an Optimal Transport Problem"""
 
+    # tic1 = time.time()
     # 1. Logging initialization
     if not os.path.isdir('logs'):
         os.mkdir('logs')
@@ -52,7 +53,7 @@ def run(datapath, benchmark, backbone, thres, alpha, hyperpixel, factorization,a
     normalization_list = ['Mutual','No','Single']
     assert(normalization in normalization_list)
 
-
+    # print(f'load time is {time.time()-tic1}')
 
 
     evaluator = evaluation.Evaluator(benchmark, device)
@@ -62,10 +63,11 @@ def run(datapath, benchmark, backbone, thres, alpha, hyperpixel, factorization,a
     trgpt_list = []
     time_list = []
     PCK_list = []
+    # print(f'the length of dataloader is {len(dataloader)}')
     for idx, data in enumerate(dataloader):
         threshold = 0.0
         # print('idx:{}'.format(idx))
-        # if idx>0:
+        # if idx>10:
         #     break
         
         # a) Retrieve images and adjust their sizes to avoid large numbers of hyperpixels(The coordinates of kps will also be adjusted with the same ratio)
@@ -90,6 +92,7 @@ def run(datapath, benchmark, backbone, thres, alpha, hyperpixel, factorization,a
         # b) Feed a pair of images to Hyperpixel Flow model
         with torch.no_grad():
             confidence_ts, src_box, trg_box = model(data['src_img'], data['trg_img'], args.sim, args.exp1, args.exp2, args.eps, args.classmap, data['src_bbox'], data['trg_bbox'], data['src_mask'], data['trg_mask'], backbone, data['src_kps'], data['trg_kps'],factorization,k,activation,normalization)
+            # print(confidence_ts)
             conf, trg_indices = torch.max(confidence_ts, dim=1)
             unique, inv = torch.unique(trg_indices, sorted=False, return_inverse=True)
             trgpt_list.append(len(unique))
@@ -98,10 +101,11 @@ def run(datapath, benchmark, backbone, thres, alpha, hyperpixel, factorization,a
         # c) Predict key-points & evaluate performance
         prd_kps = geometry.predict_kps(src_box, trg_box, data['src_kps'], confidence_ts)
         toc = time.time()
-        #print(toc-tic)
+        # print(toc-tic)
         time_list.append(toc-tic)
         pair_pck = evaluator.evaluate(prd_kps, data)
         PCK_list.append(pair_pck)
+        # print(f'evaluate time: {time.time()-toc}')
         if pair_pck==0:
             zero_pcks += 1
 

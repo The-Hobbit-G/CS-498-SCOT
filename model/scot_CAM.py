@@ -6,6 +6,7 @@ from operator import add
 import torch.nn.functional as F
 import torch
 import torchvision.utils
+import time
 # import gluoncvth as gcv
 import numpy as np
 import copy
@@ -14,6 +15,7 @@ from matplotlib import pyplot as plt
 from sklearn.cluster import KMeans
 from sklearn.decomposition import PCA
 from sklearn.decomposition import NMF
+from torchvision import transforms
 
 from . import geometry
 from . import util
@@ -27,8 +29,8 @@ from .clip import *
 
 
 clip_urls = {
-    'resnet50_clip': '/sinergia/2022-fall-sp-jiguo/pretrained/CLIP_RN50.pt',
-    'resnet101_clip': '/sinergia/2022-fall-sp-jiguo/pretrained/CLIP_RN101.pt',
+    'resnet50_clip': '/scratch/2022-fall-sp-jiguo/pretrained/CLIP_RN50.pt',
+    'resnet101_clip': '/scratch/2022-fall-sp-jiguo/pretrained/CLIP_RN101.pt',
 }
 
 
@@ -45,9 +47,14 @@ def show_from_cv(img, kps):
         img_i = cv2.circle(img.copy(),(kps[0][i],kps[1][i]),3,(0,0,255),-1)
         img_i = cv2.cvtColor(img_i, cv2.COLOR_RGB2BGR)
         img_list.append(img_i)
-    #cv2.imwrite('/sinergia/2022-fall-sp-jiguo/SCOT/visualization/'+title+'.jpg',img)
+    #cv2.imwrite('/scratch/2022-fall-sp-jiguo/SCOT/visualization/'+title+'.jpg',img)
     # img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
     return img_list
+
+
+# def normalize_clip(image):
+#     im = F.normalize(image, mean=[0.48145466, 0.4578275, 0.40821073], std=[0.26862954, 0.26130258, 0.27577711])
+#     return im
 
 
 class SCOT_CAM:
@@ -91,6 +98,8 @@ class SCOT_CAM:
             clip50_dict = torch.jit.load(clip_urls[backbone],map_location=device).state_dict()
             clip50 = build_model(clip50_dict).to(device)
             self.backbone1 = clip50.visual.to(device)
+            for p in self.backbone1.parameters():
+                p.data = p.data.to(torch.float32)
             self.backbone1.eval()
             self.backbone = resnet.resnet50(pretrained=True).to(device) ##in order to get fixed fc layers for extracting CAM
             nbottlenecks = [3, 4, 6, 3]
@@ -99,6 +108,8 @@ class SCOT_CAM:
             clip101_dict = torch.jit.load(clip_urls[backbone],map_location=device).state_dict()
             clip101 = build_model(clip101_dict).to(device)
             self.backbone1 = clip101.visual.to(device)
+            for p in self.backbone1.parameters():
+                p.data = p.data.to(torch.float32)
             self.backbone1.eval()
             self.backbone = resnet.resnet101(pretrained=True).to(device) ##in order to get fixed fc layers for extracting CAM
             nbottlenecks = [3, 4, 23, 3]
@@ -160,9 +171,21 @@ class SCOT_CAM:
         # scr_image_with_rps = show_from_cv(scr_image,src_kps.cpu().numpy().astype(int))
         # trg_image_with_rps = show_from_cv(trg_image,trg_kps.cpu().numpy().astype(int))
         #########
+        tic = time.time()
+        if backbone in ['resnet50_clip','resnet101_clip']:
+            source_image = self.detransform(args[0])
+            target_image = self.detransform(args[1])
+            clip_normalize = transforms.Normalize(mean=[0.48145466, 0.4578275, 0.40821073],
+             std=[0.26862954, 0.26130258, 0.27577711])
+            source_image = clip_normalize(source_image)
+            target_image = clip_normalize(target_image)
+            src_hyperpixels = self.extract_hyperpixel(source_image, maptype, src_bbox, src_mask, backbone)
+            trg_hyperpixels = self.extract_hyperpixel(target_image, maptype, trg_bbox, trg_mask, backbone)  
+        else:
+            src_hyperpixels = self.extract_hyperpixel(args[0], maptype, src_bbox, src_mask, backbone)
+            trg_hyperpixels = self.extract_hyperpixel(args[1], maptype, trg_bbox, trg_mask, backbone)
 
-        src_hyperpixels = self.extract_hyperpixel(args[0], maptype, src_bbox, src_mask, backbone)
-        trg_hyperpixels = self.extract_hyperpixel(args[1], maptype, trg_bbox, trg_mask, backbone)
+        # print(f'extract hyper-pixel time: {time.time()-tic}')
         src_featmap = src_hyperpixels[-1]
         trg_featmap = trg_hyperpixels[-1]
         # print('----src,trg featmap size : {},{}'.format(src_featmap.size(),trg_featmap.size()))
@@ -181,7 +204,7 @@ class SCOT_CAM:
         for i in range(trg_kps_feat.size()[1]):
             plt.subplot(1,trg_kps_feat.size()[1],i+1)
             plt.imshow(C_mat_trg[int(trg_kps_feat[0][i]),int(trg_kps_feat[1][i]),:,:].cpu().numpy())
-        plt.savefig('/sinergia/2022-fall-sp-jiguo/SCOT/visualization/C_correspondence_trg')
+        plt.savefig('/scratch/2022-fall-sp-jiguo/SCOT/visualization/C_correspondence_trg')
         '''
 
         """Visualize cross-similarity OT matrix T and p(m|D) after RHM"""
@@ -215,7 +238,7 @@ class SCOT_CAM:
             plt.subplot(4,num_kps,i+1+3*num_kps)
             plt.title('RHM')
             plt.imshow(confidence_ts_orisize[int(src_kps_feat[0][i]),int(src_kps_feat[1][i]),:,:].cpu().numpy())
-        plt.savefig('/sinergia/2022-fall-sp-jiguo/SCOT/visualization/all_three_matrices_cross_matrix')
+        plt.savefig('/scratch/2022-fall-sp-jiguo/SCOT/visualization/all_three_matrices_cross_matrix')
 
 
 
@@ -253,7 +276,7 @@ class SCOT_CAM:
             plt.subplot(4,num_kps,i+1+3*num_kps)
             plt.title('RHM')
             plt.imshow(confidence_ts_selfsim_orisize[int(src_kps_feat[0][i]),int(src_kps_feat[1][i]),:,:].cpu().numpy())
-        plt.savefig('/sinergia/2022-fall-sp-jiguo/SCOT/visualization/all_three_matrices_self_similarity')
+        plt.savefig('/scratch/2022-fall-sp-jiguo/SCOT/visualization/all_three_matrices_self_similarity')
         '''
 
 
@@ -568,7 +591,7 @@ class SCOT_CAM:
         # plt.figure()
         # for i in range(num_k):
         #     img_grid = torchvision.utils.make_grid(GT_list[i],n_rows[i])
-        #     torchvision.utils.save_image(img_grid,'/sinergia/2022-fall-sp-jiguo/SCOT/visualization/G_mat_k_means_k={}.jpg'.format(k_list[i]))
+        #     torchvision.utils.save_image(img_grid,'/scratch/2022-fall-sp-jiguo/SCOT/visualization/G_mat_k_means_k={}.jpg'.format(k_list[i]))
         return  L_list,GT_list
 
     def visualize_pca(self, hyperfeats, C_orisize, k_list):
@@ -620,7 +643,7 @@ class SCOT_CAM:
         # plt.figure()
         # for i in range(num_k):
         #     img_grid = torchvision.utils.make_grid(GT_list[i],n_rows[i])
-        #     torchvision.utils.save_image(img_grid,'/sinergia/2022-fall-sp-jiguo/SCOT/visualization/G_mat_pca_k={}.jpg'.format(k_list[i]))
+        #     torchvision.utils.save_image(img_grid,'/scratch/2022-fall-sp-jiguo/SCOT/visualization/G_mat_pca_k={}.jpg'.format(k_list[i]))
         return L_list,GT_list
 
     def visualize_nmf(self, hyperfeats, C_orisize, k_list):
@@ -648,7 +671,7 @@ class SCOT_CAM:
         # plt.figure()
         # for i in range(num_k):
         #     img_grid = torchvision.utils.make_grid(GT_list[i],n_rows[i])
-        #     torchvision.utils.save_image(img_grid,'/sinergia/2022-fall-sp-jiguo/SCOT/visualization/G_mat_nmf_k={}.jpg'.format(k_list[i]))
+        #     torchvision.utils.save_image(img_grid,'/scratch/2022-fall-sp-jiguo/SCOT/visualization/G_mat_nmf_k={}.jpg'.format(k_list[i]))
         return L_list,GT_list
 
 
@@ -816,11 +839,12 @@ class SCOT_CAM:
         plt.axis('off')
         plt.imshow(RHM_std.cpu().numpy())
         plt.colorbar()
-        plt.savefig('/sinergia/2022-fall-sp-jiguo/SCOT/visualization/self_similarity_statistics')
+        plt.savefig('/scratch/2022-fall-sp-jiguo/SCOT/visualization/self_similarity_statistics')
 
 
     def extract_hyperpixel(self, img, maptype, bbox, mask, backbone="resnet101"):
         r"""Given image, extract desired list of hyperpixels"""
+        # tic = time.time()
         hyperfeats, rfsz, jsz, feat_map, fc = self.extract_intermediate_feat(img.unsqueeze(0), return_hp=True, backbone=backbone)
 
         ###feat_map_fix,fc_fix are generated to fix the CAM(The CAM should always come from SCOT with resnet50 pretrained on ImageNet in a supervised way as backbone)
@@ -830,7 +854,8 @@ class SCOT_CAM:
             feat_map_fix, fc_fix = feat_map, fc
         else:
             _, _, _, feat_map_fix, fc_fix = self.extract_intermediate_feat(img.unsqueeze(0), return_hp=True, backbone='resnet50')
-        
+        # toc = time.time()
+        # print(f'time for extracting intermediate features is {toc -tic}')
         # print('image size:{}, feature map size:{}'.format(img.size(),feat_map.size()))
         # print('max and min of hyperfeats are: {},{}'.format(torch.max(hyperfeats),torch.min(hyperfeats)))
         hpgeometry = geometry.receptive_fields(rfsz, jsz, hyperfeats.size()).to(self.device)
@@ -892,24 +917,61 @@ class SCOT_CAM:
         '''
 
         clip_feats = []
-        if backbone in ['resnet50_clip','resnet101_clip']:
-            hook,layers = util.hook_model(self.backbone1)
-            self.backbone1(img)
+
+        # tic_pass = time.time()
+        # if backbone in ['resnet50_clip','resnet101_clip']:
+        #     hook,layers = util.hook_model(self.backbone)
+        #     tic_backbone1 = time.time()
+        #     self.backbone(img)
+        #     print(f'time for passing the image {time.time()-tic_backbone1}')
+        # print(f'time for passing the image {time.time()-tic_pass}')
 
 
 
         #For resnet part
         # Layer 0
+        tic_res = time.time()
         feat = self.backbone.conv1.forward(img)
         feat = self.backbone.bn1.forward(feat)
         feat = self.backbone.relu.forward(feat)
         feat = self.backbone.maxpool.forward(feat)
+
+        ## Try hooking clip
+        # print(f'resnet conv time {time.time()-tic_res}')
         if 0 in self.hyperpixel_ids:
             feats.append(feat.clone())
-            if backbone in ['resnet50_clip','resnet101_clip']:
-                assert(list(layers.keys())[9]=='avgpool')
-                clip_feat = hook(list(layers.keys())[9])
-                clip_feats.append(clip_feat)
+        #     if backbone in ['resnet50_clip','resnet101_clip']:
+        #         assert(list(layers.keys())[9]=='avgpool')
+        #         tic_clip = time.time()
+        #         clip_feat = hook(list(layers.keys())[9])
+        #         # print(f'clip hook time {time.time()-tic_clip}')
+        #         clip_feats.append(clip_feat)
+
+
+
+        ''''''
+        "Insert the forward propagation for clip backbone here"
+        #layer 0 for clip resnet
+        if backbone in ['resnet50_clip','resnet101_clip']:
+            # clip_img = copy.deepcopy(img)
+            # clip_img = clip_img.half()
+            clip_feat = self.backbone1.conv1.forward(img)
+            clip_feat = self.backbone1.bn1.forward(clip_feat)
+            clip_feat = self.backbone1.relu1.forward(clip_feat)
+            clip_feat = self.backbone1.conv2.forward(clip_feat)
+            clip_feat = self.backbone1.bn2.forward(clip_feat)
+            clip_feat = self.backbone1.relu2.forward(clip_feat)
+            clip_feat = self.backbone1.conv3.forward(clip_feat)
+            clip_feat = self.backbone1.bn3.forward(clip_feat)
+            clip_feat = self.backbone1.relu3.forward(clip_feat)
+            clip_feat = self.backbone1.avgpool.forward(clip_feat)
+
+            if 0 in self.hyperpixel_ids:
+                clip_feats.append(clip_feat.clone())
+        
+
+
+
 
         # Layer 1-4
         for hid, (bid, lid) in enumerate(zip(self.bottleneck_ids, self.layer_ids)):
@@ -932,19 +994,48 @@ class SCOT_CAM:
                 feats.append(feat.clone())
                 #if hid + 1 == max(self.hyperpixel_ids):
                 #    break
-                if backbone in ['resnet50_clip','resnet101_clip']:
-                    layer_name = 'layer'+str(lid)+'-'+str(bid)+'-bn3'
-                    assert(layer_name in layers.keys())
-                    clip_feat = hook(layer_name)
-                    if bid == 0:
-                        res_name = 'layer'+str(lid)+'-'+str(bid)+'-downsample'
-                        assert(res_name in layers.keys())
-                        clip_res = hook(res_name)
-                        clip_feat += clip_res
-                    clip_feats.append(clip_feat)
+
+
+                #Try hooking clip
+                # if backbone in ['resnet50_clip','resnet101_clip']:
+                #     layer_name = 'layer'+str(lid)+'-'+str(bid)+'-bn3'
+                #     assert(layer_name in layers.keys())
+                #     clip_feat = hook(layer_name)
+                #     if bid == 0:
+                #         res_name = 'layer'+str(lid)+'-'+str(bid)+'-downsample'
+                #         assert(res_name in layers.keys())
+                #         clip_res = hook(res_name)
+                #         clip_feat += clip_res
+                #     clip_feats.append(clip_feat)
 
 
             feat = self.backbone.__getattr__('layer%d' % lid)[bid].relu.forward(feat)
+
+            #Implement CLIP resnet encoder the same way of implementing other backbones without using hook
+            ''''''
+            if backbone in ['resnet50_clip','resnet101_clip']:
+                clip_res = clip_feat
+                clip_feat = self.backbone1.__getattr__('layer%d' % lid)[bid].conv1.forward(clip_feat)
+                clip_feat = self.backbone1.__getattr__('layer%d' % lid)[bid].bn1.forward(clip_feat)
+                clip_feat = self.backbone1.__getattr__('layer%d' % lid)[bid].relu1.forward(clip_feat)
+                clip_feat = self.backbone1.__getattr__('layer%d' % lid)[bid].conv2.forward(clip_feat)
+                clip_feat = self.backbone1.__getattr__('layer%d' % lid)[bid].bn2.forward(clip_feat)
+                clip_feat = self.backbone1.__getattr__('layer%d' % lid)[bid].relu2.forward(clip_feat)
+                clip_feat = self.backbone1.__getattr__('layer%d' % lid)[bid].avgpool.forward(clip_feat)
+                clip_feat = self.backbone1.__getattr__('layer%d' % lid)[bid].conv3.forward(clip_feat)
+                clip_feat = self.backbone1.__getattr__('layer%d' % lid)[bid].bn3.forward(clip_feat)
+
+                if bid == 0:
+                    clip_res = self.backbone1.__getattr__('layer%d' % lid)[bid].downsample.forward(clip_res)
+                
+                clip_feat += clip_res
+
+                if hid + 1 in self.hyperpixel_ids:
+                    clip_feats.append(clip_feat.clone())
+
+                clip_feat = self.backbone1.__getattr__('layer%d' % lid)[bid].relu3.forward(clip_feat)
+            
+
 
         # GAP feature map
         feat_map = feat

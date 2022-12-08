@@ -57,6 +57,7 @@ def beamsearch_hp(datapath, benchmark, backbone, thres, alpha, logpath,
     for base in candidate_base:
         start = time.time()
         hyperpixel = parse_layers(base)
+        # print(f'hyperpixel:{hyperpixel}')
         score = evaluate_map_CAM.run(datapath, benchmark, backbone, thres, alpha,
                              hyperpixel, factorization,activation,normalization,k,
                              logpath, args, True, model, dataloader)
@@ -129,9 +130,10 @@ if __name__ == '__main__':
     os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
 
     # 1. Candidate layers for hyperpixel initialization
-    n_layers = {'resnet50': 17, 'resnet101': 34, 'fcn101': 34,'resnet50_simsiam': 17, 'resnet50_densecl_IN': 17, 'resnet50_densecl_COCO': 17,'resnet101_densecl_IN':34,\
-        'resnet50_clip':17, 'resnet101_clip':34}
+    n_layers = {'resnet50': 17, 'resnet101': 34, 'fcn101': 34,'resnet50_simsiam': 17, 'resnet50_densecl_IN': 17, 'resnet50_densecl_COCO': 17,'resnet101_densecl_IN':34,'resnet50_clip':17, 'resnet101_clip':34}
     candidate_base = [[i] for i in range(args.beamsize)]
+    ###
+    # candidate_base = candidate_base[::-1]
     candidate_layers = list(range(n_layers[args.backbone]))
 
     # 2. Logging initialization

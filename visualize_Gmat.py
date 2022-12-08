@@ -71,7 +71,7 @@ def run(datapath, benchmark, backbone, thres, alpha, hyperpixel,
 
     data['alpha'] = alpha
 
-    savepath = '/sinergia/2022-fall-sp-jiguo/SCOT/visualization/Gmat_example/'
+    savepath = '/scratch/2022-fall-sp-jiguo/SCOT/visualization/Gmat_example/'
     factorization_list = ['PCA' ,'NMF','KMeans','All']
     assert(factorization in factorization_list)
     choice_list = ['src','trg']

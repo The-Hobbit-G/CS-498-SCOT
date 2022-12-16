@@ -12,12 +12,14 @@ from collections import OrderedDict
 class ModuleHook:
     #### Example usage: encoder_hook, encoder_layers = hook_model(encoder, include_class_name=False)
     def __init__(self, module):
+        # tic = time.time()
         self.hook = module.register_forward_hook(self.hook_fn)
+        # print(f'self hook time {time.time()-tic}')
         self.module = None
         self.features = None
 
     def hook_fn(self, module, input, output):
-        tic = time.time()
+        # tic = time.time()
         self.module = module
         self.features = output
         # print(f'hook_fn time {time.time()-tic}')
@@ -47,9 +49,9 @@ def hook_model(model, include_class_name=False):
     hook_layers(model)
 
     def hook(layer):
-        tic_1 = time.time()
+        # tic_1 = time.time()
         assert layer in features, f"Invalid layer {layer}. Retrieve the list of layers with `lucent.modelzoo.util.get_model_layers(model)`."
-        tic_2 = time.time()
+        # tic_2 = time.time()
         # print(f'assert time {tic_2-tic_1}')
         out = features[layer].features
         

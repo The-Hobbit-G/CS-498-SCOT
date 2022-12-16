@@ -102,6 +102,7 @@ class SCOT_CAM:
                 p.data = p.data.to(torch.float32)
             self.backbone1.eval()
             self.backbone = resnet.resnet50(pretrained=True).to(device) ##in order to get fixed fc layers for extracting CAM
+            self.hook, self.layers = util.hook_model(self.backbone1)
             nbottlenecks = [3, 4, 6, 3]
 
         elif backbone == 'resnet101_clip':
@@ -112,6 +113,7 @@ class SCOT_CAM:
                 p.data = p.data.to(torch.float32)
             self.backbone1.eval()
             self.backbone = resnet.resnet101(pretrained=True).to(device) ##in order to get fixed fc layers for extracting CAM
+            self.hook, self.layers = util.hook_model(self.backbone1)
             nbottlenecks = [3, 4, 23, 3]
     
         else:
@@ -919,10 +921,10 @@ class SCOT_CAM:
         clip_feats = []
 
         # tic_pass = time.time()
-        # if backbone in ['resnet50_clip','resnet101_clip']:
-        #     hook,layers = util.hook_model(self.backbone)
-        #     tic_backbone1 = time.time()
-        #     self.backbone(img)
+        if backbone in ['resnet50_clip','resnet101_clip']:
+            # hook,layers = util.hook_model(self.backbone1)
+            # tic_backbone1 = time.time()
+            self.backbone1(img)
         #     print(f'time for passing the image {time.time()-tic_backbone1}')
         # print(f'time for passing the image {time.time()-tic_pass}')
 
@@ -940,16 +942,17 @@ class SCOT_CAM:
         # print(f'resnet conv time {time.time()-tic_res}')
         if 0 in self.hyperpixel_ids:
             feats.append(feat.clone())
-        #     if backbone in ['resnet50_clip','resnet101_clip']:
-        #         assert(list(layers.keys())[9]=='avgpool')
-        #         tic_clip = time.time()
-        #         clip_feat = hook(list(layers.keys())[9])
-        #         # print(f'clip hook time {time.time()-tic_clip}')
-        #         clip_feats.append(clip_feat)
+
+            if backbone in ['resnet50_clip','resnet101_clip']:
+                assert(list(self.layers.keys())[9]=='avgpool')
+                tic_clip = time.time()
+                clip_feat = self.hook(list(self.layers.keys())[9])
+                # print(f'clip hook time {time.time()-tic_clip}')
+                clip_feats.append(clip_feat)
 
 
 
-        ''''''
+        '''
         "Insert the forward propagation for clip backbone here"
         #layer 0 for clip resnet
         if backbone in ['resnet50_clip','resnet101_clip']:
@@ -968,6 +971,7 @@ class SCOT_CAM:
 
             if 0 in self.hyperpixel_ids:
                 clip_feats.append(clip_feat.clone())
+        '''
         
 
 
@@ -997,22 +1001,24 @@ class SCOT_CAM:
 
 
                 #Try hooking clip
-                # if backbone in ['resnet50_clip','resnet101_clip']:
-                #     layer_name = 'layer'+str(lid)+'-'+str(bid)+'-bn3'
-                #     assert(layer_name in layers.keys())
-                #     clip_feat = hook(layer_name)
-                #     if bid == 0:
-                #         res_name = 'layer'+str(lid)+'-'+str(bid)+'-downsample'
-                #         assert(res_name in layers.keys())
-                #         clip_res = hook(res_name)
-                #         clip_feat += clip_res
-                #     clip_feats.append(clip_feat)
+                if backbone in ['resnet50_clip','resnet101_clip']:
+                    layer_name = 'layer'+str(lid)+'-'+str(bid)+'-bn3'
+                    assert(layer_name in self.layers.keys())
+                    clip_feat = self.hook(layer_name)
+                    if bid == 0:
+                        res_name = 'layer'+str(lid)+'-'+str(bid)+'-downsample'
+                    else:
+                        res_name = 'layer'+str(lid)+'-'+str(bid-1)
+                    assert(res_name in self.layers.keys())
+                    clip_res = self.hook(res_name)
+                    clip_feat += clip_res
+                    clip_feats.append(clip_feat)
 
 
             feat = self.backbone.__getattr__('layer%d' % lid)[bid].relu.forward(feat)
 
             #Implement CLIP resnet encoder the same way of implementing other backbones without using hook
-            ''''''
+            '''
             if backbone in ['resnet50_clip','resnet101_clip']:
                 clip_res = clip_feat
                 clip_feat = self.backbone1.__getattr__('layer%d' % lid)[bid].conv1.forward(clip_feat)
@@ -1034,7 +1040,7 @@ class SCOT_CAM:
                     clip_feats.append(clip_feat.clone())
 
                 clip_feat = self.backbone1.__getattr__('layer%d' % lid)[bid].relu3.forward(clip_feat)
-            
+            '''
 
 
         # GAP feature map

@@ -67,15 +67,15 @@ class gtav_city(data.Dataset):
     
         # A
         if self.train:
-            self.A_anno = glob.glob(os.path.join(os.sep, 'sinergia', 'at-drit', 'gta5', 'labels', '*.png'))
-            self.A = [anno.replace('labels', 'images').replace('at-drit', 'cvpr_dunit') for anno in self.A_anno]
+            self.A_anno = glob.glob(os.path.join(os.sep, 'sinergia', 'ozaydin', 'gta5', 'labels', '*.png'))
+            self.A = [anno.replace('labels', 'images').replace('ozaydin', 'cvpr_dunit') for anno in self.A_anno]
             self.B_anno = glob.glob(os.path.join(os.sep, 'sinergia', 'cvpr_dunit', 'cityscapes', 'gtFine', 'train', '**', '*color.png'))
             self.B = [os.path.join(os.sep, *anno.split('/')[:4], anno.split('/')[-1].replace('gtFine_color', 'leftImg8bit')) for anno in self.B_anno]
         else:
-            self.A_anno = glob.glob(os.path.join(os.sep, 'sinergia', 'at-drit', 'gta5', 'labels', 'test', '*.png'))
-            self.A = [anno.replace('labels', 'images').replace('at-drit', 'cvpr_dunit') for anno in self.A_anno]
+            self.A_anno = glob.glob(os.path.join(os.sep, 'sinergia', 'ozaydin', 'gta5', 'labels', 'test', '*.png'))
+            self.A = [anno.replace('labels', 'images').replace('ozaydin', 'cvpr_dunit') for anno in self.A_anno]
             self.B_anno = glob.glob(os.path.join(os.sep, 'sinergia', 'cvpr_dunit', 'cityscapes', 'gtFine', 'val', '**', '*color.png'))
-            self.B = [os.path.join(os.sep, 'sinergia', 'at-drit', 'cityscapes', 'leftImg8bit', *anno.split('/')[-3:-1], anno.split('/')[-1].replace('gtFine_color', 'leftImg8bit')) for anno in self.B_anno]
+            self.B = [os.path.join(os.sep, 'sinergia', 'ozaydin', 'cityscapes', 'leftImg8bit', *anno.split('/')[-3:-1], anno.split('/')[-1].replace('gtFine_color', 'leftImg8bit')) for anno in self.B_anno]
 
         # B
         
@@ -87,8 +87,10 @@ class gtav_city(data.Dataset):
 
     def __getitem__(self, index):
         try:
-            idx_a = index if self.dataset_size == self.A_size else random.randint(0, self.A_size - 1)
-            idx_b = index if self.dataset_size == self.B_size else random.randint(0, self.B_size - 1)
+            # idx_a = index if self.dataset_size == self.A_size else random.randint(0, self.A_size - 1)
+            # idx_b = index if self.dataset_size == self.B_size else random.randint(0, self.B_size - 1)
+            idx_a = index
+            idx_b = index
             data_A, anno_A = self.load_img(self.A[idx_a], self.A_anno[idx_a])
             data_B, anno_B = self.load_img(self.B[idx_b], self.B_anno[idx_b])
         except(IOError, OSError, IndexError, AssertionError) as e:
@@ -309,8 +311,8 @@ class init_dataset(data.Dataset):
     def __init__(self, train, opts):
         self.train = train
         self.opts = opts
-        pathA = os.path.join(os.sep, 'sinergia', 'at-drit', 'init', 'batch1_anno', 'sunny1.txt')
-        pathB = os.path.join(os.sep, 'sinergia', 'at-drit', 'init', 'batch1_anno', 'night1.txt')
+        pathA = os.path.join(os.sep, 'sinergia', 'ozaydin', 'init', 'batch1_anno', 'sunny1.txt')
+        pathB = os.path.join(os.sep, 'sinergia', 'ozaydin', 'init', 'batch1_anno', 'night1.txt')
         self.A = self.read_data(pathA)
         self.B = self.read_data(pathB)
         self.A_size = len(self.A)
@@ -320,7 +322,7 @@ class init_dataset(data.Dataset):
         # print(len(A), A[0]['path'], A[0]['num_boxes'], A[0]['boxes']['classes'], A[0]['boxes']['coords'])
     
     def read_data(self, path):
-        root = '/sinergia/at-drit/init/'
+        root = '/sinergia/ozaydin/init/'
         folder = os.path.splitext(os.path.basename(path))[0][:-1]
         data = []
         with open(path) as f:

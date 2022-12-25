@@ -8,6 +8,7 @@ import requests
 from . import pfpascal
 from . import pfwillow
 from . import spair
+from . import gta
 
 
 def load_dataset(benchmark, datapath, thres, device, split='test', cam=''):
@@ -16,13 +17,21 @@ def load_dataset(benchmark, datapath, thres, device, split='test', cam=''):
         'pfpascal': pfpascal.PFPascalDataset,
         'pfwillow': pfwillow.PFWillowDataset,
         'spair': spair.SPairDataset,
+        'gta': gta.gtav_city
     }
 
     dataset = correspondence_benchmark.get(benchmark)
     if dataset is None:
         raise Exception('Invalid benchmark dataset %s.' % benchmark)
 
-    return dataset(benchmark, datapath, thres, device, split, cam)
+    if benchmark == 'gta':
+        opts = {'resize_size':256, 'crop_size':256}
+        if split == 'train':
+            return dataset(train=True, opts=opts)
+        else:
+            return dataset(train=False, opts=opts)
+    else:
+        return dataset(benchmark, datapath, thres, device, split, cam)
 
 
 def download_from_google(token_id, filename):

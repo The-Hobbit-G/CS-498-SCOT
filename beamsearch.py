@@ -12,6 +12,7 @@ import torch
 from data import dataset, download
 from model import scot_CAM, util
 import evaluate_map_CAM
+import evaluate_gta
 
 
 def parse_layers(layer_ids):
@@ -48,7 +49,7 @@ def beamsearch_hp(datapath, benchmark, backbone, thres, alpha, logpath,
     # 1. Model, and dataset initialization
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     model = scot_CAM.SCOT_CAM(backbone, '0', benchmark, device, args.cam)
-    download.download_dataset(os.path.abspath(datapath), benchmark)
+    # download.download_dataset(os.path.abspath(datapath), benchmark)
     dset = download.load_dataset(benchmark, datapath, thres, device, 'val')
     dataloader = DataLoader(dset, batch_size=1, num_workers=0)
 
@@ -58,9 +59,14 @@ def beamsearch_hp(datapath, benchmark, backbone, thres, alpha, logpath,
         start = time.time()
         hyperpixel = parse_layers(base)
         # print(f'hyperpixel:{hyperpixel}')
-        score = evaluate_map_CAM.run(datapath, benchmark, backbone, thres, alpha,
+        if benchmark == 'gta':
+            score = evaluate_gta.run(datapath, benchmark, backbone, thres, alpha,
                              hyperpixel, factorization,activation,normalization,k,
                              logpath, args, True, model, dataloader)
+        else:
+            score = evaluate_map_CAM.run(datapath, benchmark, backbone, thres, alpha,
+                                hyperpixel, factorization,activation,normalization,k,
+                                logpath, args, True, model, dataloader)
         log_evaluation(base, score, time.time() - start)
         membuf_cand.append((score, base))
     membuf_topk = find_topk(membuf_cand, beamsize)
@@ -78,9 +84,14 @@ def beamsearch_hp(datapath, benchmark, backbone, thres, alpha, logpath,
                     if test_layers in list(map(lambda x: x[1], membuf_cand)):
                         break
                     hyperpixel = parse_layers(test_layers)
-                    score = evaluate_map_CAM.run(datapath, benchmark, backbone, thres, alpha,
-                                         hyperpixel, factorization,activation,normalization,k,
-                                          logpath, args, True, model, dataloader)
+                    if benchmark == 'gta':
+                        score = evaluate_gta.run(datapath, benchmark, backbone, thres, alpha,
+                             hyperpixel, factorization,activation,normalization,k,
+                             logpath, args, True, model, dataloader)
+                    else:
+                        score = evaluate_map_CAM.run(datapath, benchmark, backbone, thres, alpha,
+                                            hyperpixel, factorization,activation,normalization,k,
+                                            logpath, args, True, model, dataloader)
 
                     log_evaluation(test_layers, score, time.time() - start)
                     membuf_cand.append((score, test_layers))

@@ -7,6 +7,7 @@ import torch.nn.functional as F
 import torch
 import torchvision.utils
 import time
+import torchvision.transforms.functional as TF
 # import gluoncvth as gcv
 import numpy as np
 import copy
@@ -52,9 +53,9 @@ def show_from_cv(img, kps):
     return img_list
 
 
-# def normalize_clip(image):
-#     im = F.normalize(image, mean=[0.48145466, 0.4578275, 0.40821073], std=[0.26862954, 0.26130258, 0.27577711])
-#     return im
+def denormalize_gta(image):
+    im = TF.normalize(image, mean=[-1, -1, -1], std=[2, 2, 2])
+    return im
 
 
 class SCOT_CAM:
@@ -175,8 +176,12 @@ class SCOT_CAM:
         #########
         tic = time.time()
         if backbone in ['resnet50_clip','resnet101_clip']:
-            source_image = self.detransform(args[0])
-            target_image = self.detransform(args[1])
+            if self.benchmark == 'gta':
+                source_image = denormalize_gta(args[0])
+                target_image = denormalize_gta(args[1])
+            else:
+                source_image = self.detransform(args[0])
+                target_image = self.detransform(args[1])
             clip_normalize = transforms.Normalize(mean=[0.48145466, 0.4578275, 0.40821073],
              std=[0.26862954, 0.26130258, 0.27577711])
             source_image = clip_normalize(source_image)
@@ -196,127 +201,17 @@ class SCOT_CAM:
         
         """Visualize cross-similarity C"""
         
-        C_mat = torch.einsum('kij,kmn -> ijmn',(src_featmap,trg_featmap))/(torch.norm(src_featmap,2)*torch.norm(trg_featmap,2))
+        # C_mat = torch.einsum('kij,kmn -> ijmn',(src_featmap,trg_featmap))/(torch.norm(src_featmap,2)*torch.norm(trg_featmap,2))
         # print('C_mat size: {}'.format(C_mat.size()))
         
-
-        '''
-        C_mat_trg = C_mat.permute(2,3,0,1)
-        plt.figure(2)
-        for i in range(trg_kps_feat.size()[1]):
-            plt.subplot(1,trg_kps_feat.size()[1],i+1)
-            plt.imshow(C_mat_trg[int(trg_kps_feat[0][i]),int(trg_kps_feat[1][i]),:,:].cpu().numpy())
-        plt.savefig('/scratch/2022-fall-sp-jiguo/SCOT/visualization/C_correspondence_trg')
-        '''
 
         """Visualize cross-similarity OT matrix T and p(m|D) after RHM"""
         ##cross-similarity T for the source image
         confidence_ts, OT_mat, C_2dim = rhm_map.rhm(src_hyperpixels, trg_hyperpixels, self.hsfilter, args[2], args[3], args[4], args[5],k,factorization,activation,normalization)
         # print('**confidence_ts size: {}'.format(confidence_ts.size()))
-        confidence_ts_orisize = confidence_ts.view_as(C_mat)
-        OT_mat_orisize = OT_mat.view_as(C_mat)
-        # print('**confidence_ts original size:{}'.format(confidence_ts_orisize.size()))
-
-
-        '''
-        plt.figure(figsize=(3*num_kps,3*4))
-        plt.subplot(4,num_kps,1)
-        plt.title('source image')
-        plt.imshow(scr_image_with_rps)
-        plt.subplot(4,num_kps,2)
-        plt.title('target image')
-        plt.imshow(trg_image_with_rps)
-
-        for i in range(num_kps):
-            ##Correlation matrix C
-            plt.subplot(4,num_kps,i+1+num_kps)
-            plt.title('Correlation matrix')
-            plt.imshow(C_mat[int(src_kps_feat[0][i]),int(src_kps_feat[1][i]),:,:].cpu().numpy())
-            ##OT matrix T
-            plt.subplot(4,num_kps,i+1+2*num_kps)
-            plt.title('OT matrix')
-            plt.imshow(OT_mat_orisize[int(src_kps_feat[0][i]),int(src_kps_feat[1][i]),:,:].cpu().numpy()) 
-            #RHM confidence
-            plt.subplot(4,num_kps,i+1+3*num_kps)
-            plt.title('RHM')
-            plt.imshow(confidence_ts_orisize[int(src_kps_feat[0][i]),int(src_kps_feat[1][i]),:,:].cpu().numpy())
-        plt.savefig('/scratch/2022-fall-sp-jiguo/SCOT/visualization/all_three_matrices_cross_matrix')
-
-
-
-        """Visualize self-similarity C"""
-        ##self-similarity C for the source image
-        C_self_src = torch.einsum('kij,kmn -> ijmn',(src_featmap,src_featmap))/(torch.norm(src_featmap,2)*torch.norm(src_featmap,2))
-        
-
-    
-        """Visualize self-similarity OT matrix T and p(m|D) after RHM"""
-        ##self-similarity T for the source image
-        confidence_ts_selfsim, OT_mat_selfsim, C_2dim_selfsim = rhm_map.rhm(src_hyperpixels, src_hyperpixels, self.hsfilter, args[2], args[3], args[4], args[5])
-        confidence_ts_selfsim_orisize = confidence_ts_selfsim.view_as(C_self_src)
-        OT_mat_selfsim_orisize = OT_mat_selfsim.view_as(C_self_src)
-
-
-        plt.figure(figsize=(3*num_kps,3*4))
-        plt.subplot(4,num_kps,1)
-        plt.title('source image')
-        plt.imshow(scr_image_with_rps)
-        # plt.subplot(4,num_kps,2)
-        # plt.title('target image')
-        # plt.imshow(trg_image_with_rps)
-
-        for i in range(num_kps):
-            ##Correlation matrix C
-            plt.subplot(4,num_kps,i+1+num_kps)
-            plt.title('Correlation matrix')
-            plt.imshow(C_self_src[int(src_kps_feat[0][i]),int(src_kps_feat[1][i]),:,:].cpu().numpy())
-            ##OT matrix T
-            plt.subplot(4,num_kps,i+1+2*num_kps)
-            plt.title('OT matrix')
-            plt.imshow(OT_mat_selfsim_orisize[int(src_kps_feat[0][i]),int(src_kps_feat[1][i]),:,:].cpu().numpy()) 
-            #RHM confidence
-            plt.subplot(4,num_kps,i+1+3*num_kps)
-            plt.title('RHM')
-            plt.imshow(confidence_ts_selfsim_orisize[int(src_kps_feat[0][i]),int(src_kps_feat[1][i]),:,:].cpu().numpy())
-        plt.savefig('/scratch/2022-fall-sp-jiguo/SCOT/visualization/all_three_matrices_self_similarity')
-        '''
-
-
-        
-        """Visualize the entropy, mean, sum, std of self-similarity C(C_2dim_selfsim) and T(OT_mat_selfsim) over axis =1 so that [HW*HW] --> [HW,1]"""
-        # self.plot_selfsim_statistic(C_2dim_selfsim,OT_mat_selfsim,confidence_ts_selfsim,C_self_src[:,:,0,0],scr_image_with_rps)
-
-        
-        """Visualize the result of applying K-means, PCA, NNMF at src_hyperfeats"""
-        
-        # k_list = [3,7,20,35]
-        '''
-        # k_list = [200]
-        k_list = [4,9,16,25,36]
-        n_rows = [2,3,4,5,6]
-        #visualize K-means results
-        # src_hyperfeatures = src_hyperpixels[1]
-        # print(src_hyperfeatures)
-        # print(src_hyperfeatures[src_hyperfeatures<0])
-       
-        self.visualize_k_means(src_hyperpixels[1],C_self_src[:,:,0,0],k_list,n_rows)
-        #visualize PCA results
-        self.visualize_pca(src_hyperpixels[1],C_self_src[:,:,0,0],k_list,n_rows)
-        #visualize NMF results
-        self.visualize_nmf(src_hyperpixels[1],C_self_src[:,:,0,0],k_list,n_rows)
-
-        
-        """Visualize different sim with different backbone"""
-        ##You can choose different backbones by changing the 'backbone' attribute and different similarity matrix by changing the 'sim' attribute
-        sim = 'Correlation' #'OT','RHM'
-        self.visualize_sim(args[0],args[1],maptype, src_bbox, trg_bbox, src_mask, trg_mask,args[3], args[4], args[5],backbone, sim, args[2])
-
-        """Visualize G from fs = FG.T with different choices of factorization and different backbones"""
-        ## bbox and mask have to be in line with img(src for args[0], trg for args[1])
-        ## You can choose different backbones by changing the 'backbone' attribute and different factorization by changing fac
-        fac = 'KMeans' # 'PCA','NMF'
-        self.visualize_G(args[0], maptype, src_bbox, src_mask, k_list, backbone, fac)
-        '''
+        # confidence_ts_orisize = confidence_ts.view_as(C_mat)
+        # OT_mat_orisize = OT_mat.view_as(C_mat)
+        # print('**confidence_ts original size:{}'.format(confidence_ts_orisize.size())
         
 
         return confidence_ts, src_hyperpixels[0], trg_hyperpixels[0]

@@ -35,6 +35,7 @@ def get_pred(color, classes):
 def get_mask(pred):
     '''
     Expects predictions without the BG class. Converts Soft probabilities to one-hot. Adds BG
+    so the pred should be [1,19(c-1),h,w]
     '''
     # b ,c, h, w
     pred = torch.cat([pred, torch.zeros((pred.shape[0],1,*pred.shape[2:])).cuda()], dim=1)
@@ -44,7 +45,7 @@ def get_mask(pred):
 
 def get_color(mask, classes):
     '''
-    Expects one-hot masks with the BG. Converts them to RGB
+    Expects one-hot masks with the BG. Converts them to RGB (won't be used for now)
     '''
     #mask = mask[:,1:,]
     device = mask.device
@@ -59,11 +60,11 @@ def get_color(mask, classes):
  
 def accuracy(pred, gt):
     mask = get_mask(pred)
-    fg = 1 - gt[:,-1:,:,:]
+    fg = 1 - gt[:,-1:,:,:]#get the foreground
     mask = mask * fg
     
-    c = gt.shape[1]
-    n = fg.sum(-1).sum(-1)
+    c = gt.shape[1]  #num of classes
+    n = fg.sum(-1).sum(-1) #num of foreground pixels
     
     true = ((mask == gt).sum(1, keepdims=True)==c).sum(-1).sum(-1)
     inter = ((mask + gt)>=1.9).sum(-1).sum(-1)

@@ -1,4 +1,4 @@
-r"""Runs Semantic Correspondence as an Optimal Transport Problem"""
+r"""Runs Semantic Correspondence as an Optimal Transport Problem on GTA and Cityscape datasets"""
 
 import argparse
 import datetime
@@ -66,74 +66,89 @@ def run(datapath, benchmark, backbone, thres, alpha, hyperpixel, factorization,a
 
     evaluator = evaluation.Evaluator(benchmark, device)
 
-    zero_pcks = 0
-    srcpt_list = []
-    trgpt_list = []
+    # zero_pcks = 0
+    # srcpt_list = []
+    # trgpt_list = []
+    # time_list = []
+    # PCK_list = []
+    zero_acc = 0
     time_list = []
-    PCK_list = []
     # print(f'the length of dataloader is {len(dataloader)}')
+    ##Now we need each pixel in the src img(gta) to be key points
+    datalen = len(dataloader)
     for idx, data in enumerate(dataloader):
-        threshold = 0.0
-        # print('idx:{}'.format(idx))
-        # if idx>10:
-        #     break
-        
-        # a) Retrieve images and adjust their sizes to avoid large numbers of hyperpixels(The coordinates of kps will also be adjusted with the same ratio)
-        data['src_img'], data['src_kps'], data['src_intratio'] = util.resize(data['src_img'], data['src_kps'][0])
-        data['trg_img'], data['trg_kps'], data['trg_intratio'] = util.resize(data['trg_img'], data['trg_kps'][0])
-        src_size = data['src_img'].size()
-        trg_size = data['trg_img'].size()
-        
-        if len(args.cam)>0:
-            data['src_mask'] = util.resize_mask(data['src_mask'],src_size)
-            data['trg_mask'] = util.resize_mask(data['trg_mask'],trg_size)
-            data['src_bbox'] = util.get_bbox_mask(data['src_mask'], thres=threshold).to(device)
-            data['trg_bbox'] = util.get_bbox_mask(data['trg_mask'], thres=threshold).to(device)
-        else:
-            data['src_mask'] = None
-            data['trg_mask'] = None
-
-        data['alpha'] = alpha
+        gta_img,gta_ano,cs_img,cs_ano = data[0].to(device),data[1].to(device),data[2].to(device),data[3].to(device)
+        assert(gta_ano.shape==cs_ano.shape)
+        # print(gta_img.shape,cs_img.shape)
+        #shape of gta_img = shape of cs_img = [1, 3, 196, 392], shape of gta_ano = shape of cs_ano = [1, 20, 196, 392]
+        #gta_ano and cs_ano have 20 class labels including 1 background label
+        # print(gta_img[0],cs_img[0])
+        """
+        In spair, data['bbox'] and data['kps'] are useless during evaluation and data['mask'] is None.
+        So we don't have to care about any of them here (Could simply set them all to None)
+        """
         tic = time.time()
         # print('src_kps_size:{}'.format(data['src_kps'].size()))
-        ##src_kps and trg_kps are stored in a width,height fashion like [[w1,w2,w3],[h1,h2,h3]]
 
         # b) Feed a pair of images to Hyperpixel Flow model
         with torch.no_grad():
-            confidence_ts, src_box, trg_box = model(data['src_img'], data['trg_img'], args.sim, args.exp1, args.exp2, args.eps, args.classmap, data['src_bbox'], data['trg_bbox'], data['src_mask'], data['trg_mask'], backbone, data['src_kps'], data['trg_kps'],factorization,k,activation,normalization)
+            confidence_ts, src_box, trg_box = model(gta_img[0], cs_img[0], args.sim, args.exp1, args.exp2, args.eps, args.classmap, None, None, None, None, backbone, None, None,factorization,k,activation,normalization)
             # print(confidence_ts)
             conf, trg_indices = torch.max(confidence_ts, dim=1)
-            #conf--the conf score of the pixel in trg img that has the highest matching conf score with a perticular pixel in the hyper-feats of scr img
-            #trg_indices -- the index of that perticular hyperpixel
             unique, inv = torch.unique(trg_indices, sorted=False, return_inverse=True)
-            trgpt_list.append(len(unique))# we only count the unique matching pixel(which means we only accept one-to-one matching)
-            srcpt_list.append(len(confidence_ts))
-
-        # c) Predict key-points & evaluate performance
-        prd_kps = geometry.predict_kps(src_box, trg_box, data['src_kps'], confidence_ts)
+            # trgpt_list.append(len(unique))
+            # srcpt_list.append(len(confidence_ts))
+        if idx == 0:
+            gta_shape = gta_img.shape
+            cs_shape = cs_img.shape
+            pixels = torch.zeros([2,gta_img.shape[2]*gta_img.shape[3]])
+            x_ = np.arange(gta_img.shape[-1])
+            x_cor = np.repeat(x_,gta_img.shape[-2])
+            y_cor = torch.arange(gta_img.shape[-2]).repeat(gta_img.shape[-1])
+            # print(pixels.shape,x_cor.shape,y_cor.shape)
+            pixels[0,:] = torch.from_numpy(x_cor).to(torch.float32)
+            pixels[1,:] = y_cor
+            pixels = pixels.to(device)
+            # print(pixels[:,500:520])
+        assert(gta_img.shape==gta_shape==cs_img.shape==cs_shape)
+            
+        # c) Predict the correspondence of all pixels in src_img & evaluate performance
+        prd_pixels = geometry.predict_kps(src_box, trg_box, pixels, confidence_ts) #get the correpondence pixel in cs of every pixel in gta
+        prd_pixels[0] = torch.clamp(prd_pixels[0],min=0,max=cs_img.shape[-1]-1)
+        prd_pixels[1] = torch.clamp(prd_pixels[1],min=0,max=cs_img.shape[-2]-1)
+        
+        # print(prd_pixels.shape,prd_pixels)
+        gta_prd = torch.zeros_like(gta_ano)
+        gta_prd[:,:,pixels[1].long(),pixels[0].long()] = cs_ano[:,:,prd_pixels[1].long(),prd_pixels[0].long()]
         toc = time.time()
-        # print(toc-tic)
         time_list.append(toc-tic)
-        pair_pck = evaluator.evaluate(prd_kps, data)
-        PCK_list.append(pair_pck)
-        # print(f'evaluate time: {time.time()-toc}')
-        if pair_pck==0:
-            zero_pcks += 1
+
+        gta_classes = gta_ano[0].sum(-1).sum(-1)
+        cs_classes = cs_ano[0].sum(-1).sum(-1)
+        common_classes = gta_classes*cs_classes
+        common_classes = torch.clamp(common_classes,max=1)
+        # print(common_classes.shape)
+        acc,inter,uni = evaluator.evaluate_acc(gta_prd,gta_ano,common_classes)
+
+        if acc == 0:
+            zero_acc += 1
 
         # d) Log results
         if not beamsearch:
-            evaluator.log_result(idx, data=data)
+            evaluator.log_acc(idx, datalen)
+        
+        
     
     #save_file = logfile.replace('logs/','')
     #np.save('PCK_{}.npy'.format(save_file), PCK_list)
     if beamsearch:
-        return (sum(evaluator.eval_buf['pck']) / len(evaluator.eval_buf['pck'])) * 100.
+        return (sum(evaluator.eval_buf['true']) / sum(evaluator.eval_buf['common_area'])) * 100.
     else:
-        logging.info('source points:'+str(sum(srcpt_list)*1.0/len(srcpt_list)))
-        logging.info('target points:'+str(sum(trgpt_list)*1.0/len(trgpt_list)))
+        # logging.info('source points:'+str(sum(srcpt_list)*1.0/len(srcpt_list)))
+        # logging.info('target points:'+str(sum(trgpt_list)*1.0/len(trgpt_list)))
         logging.info('avg running time:'+str(sum(time_list)/len(time_list)))
-        evaluator.log_result(len(dset), data=None, average=True)
-        logging.info('Total Number of 0.00 pck images:'+str(zero_pcks))
+        evaluator.log_acc(len(dset), datalen, average=True)
+        logging.info('Total Number of 0.00 acc images:'+str(zero_acc))
     
 
 

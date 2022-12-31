@@ -28,6 +28,8 @@ def load_dataset(benchmark, datapath, thres, device, split='test', cam=''):
         opts = {'resize_size':256, 'crop_size':256}
         if split == 'train':
             return dataset(train=True, opts=opts)
+        elif split == 'val':
+            return dataset(train=False, opts=opts,split='val')
         else:
             return dataset(train=False, opts=opts)
     else:

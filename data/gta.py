@@ -61,12 +61,13 @@ class gtav_city(data.Dataset):
     def num_classes():
         return len(gtav_city.CLASSES.keys())
     
-    def __init__(self, train, opts):
+    def __init__(self, train, opts, split='test'):
         self.opts = opts
         self.train = train
+        self.split = split
     
         # A
-        if self.train:
+        if self.train or split=='val':
             self.A_anno = glob.glob(os.path.join(os.sep, 'sinergia', 'ozaydin', 'gta5', 'labels', '*.png'))
             self.A = [anno.replace('labels', 'images').replace('ozaydin', 'cvpr_dunit') for anno in self.A_anno]
             self.B_anno = glob.glob(os.path.join(os.sep, 'sinergia', 'cvpr_dunit', 'cityscapes', 'gtFine', 'train', '**', '*color.png'))
@@ -79,18 +80,35 @@ class gtav_city(data.Dataset):
 
         # B
         
+        #len(gta_train)=22966,len(cityscape_train)=2975
+        #len(gta_test)=2000,len(cityscape_test)=500
+        
 
         self.A_size = len(self.A)
         self.B_size = len(self.B)
         self.dataset_size = max(self.A_size, self.B_size) if self.train else self.B_size
+        self.dataset_size = min(self.A_size, self.B_size) if split=='val' else self.B_size
+        #when doing evaluation(for sth like beamsearch), we use just part of the train set(dependent on the min size of the two datasets)
+        
+        # print(self.dataset_size,self.A_size,self.B_size)
+
+
         self.classes = gtav_city.CLASSES
 
     def __getitem__(self, index):
         try:
-            # idx_a = index if self.dataset_size == self.A_size else random.randint(0, self.A_size - 1)
-            # idx_b = index if self.dataset_size == self.B_size else random.randint(0, self.B_size - 1)
-            idx_a = index
-            idx_b = index
+            
+            if self.train:
+                idx_a = index if self.dataset_size == self.A_size else random.randint(0, self.A_size - 1)
+                idx_b = index if self.dataset_size == self.B_size else random.randint(0, self.B_size - 1)
+            #during val and test, we remove randomness by uniformly sampling the dataset
+            elif self.split=='test':
+                idx_a = index*4  #gta test set is 4 times larger than cityscape test set
+                idx_b = index
+            else:
+                idx_a = index*7  #gta train set is about 7.7 times larger than cityscape train set
+                idx_b = index
+            
             data_A, anno_A = self.load_img(self.A[idx_a], self.A_anno[idx_a])
             data_B, anno_B = self.load_img(self.B[idx_b], self.B_anno[idx_b])
         except(IOError, OSError, IndexError, AssertionError) as e:
@@ -119,13 +137,22 @@ class gtav_city(data.Dataset):
     def transform(self, input, target, opts):
         input = F.resize(input, opts['resize_size'], transforms.InterpolationMode.BICUBIC)
         target = F.resize(target, opts['resize_size'], transforms.InterpolationMode.NEAREST)
-        if self.train:
-            i, j, h, w = transforms.RandomCrop.get_params(input, (opts['crop_size'], opts['crop_size']))
+
+        if self.split == 'val':
+            center_crop = CenterCrop((opts['crop_size'], opts['crop_size']))
+            input = center_crop(input)
+            target = center_crop(target)
+            # print(input,target)
         else:
-            i, j, h, w = 0, 0, 7.0/8 * opts['crop_size'], 14.0/8 * opts['crop_size']
-        input = F.crop(input, i, j, h, w)
-        target = F.crop(target, i, j, h, w)
-        if random.random() > 0.5 and self.train:
+            if self.train:
+                i, j, h, w = transforms.RandomCrop.get_params(input, (opts['crop_size'], opts['crop_size']))
+            else:
+                i, j, h, w = 0, 0, 7.0/8 * opts['crop_size'], 14.0/8 * opts['crop_size']
+            input = F.crop(input, i, j, h, w)
+            target = F.crop(target, i, j, h, w)
+
+        ##do random flip only during training
+        if random.random() > 0.5 and self.train and self.split != 'val':
             input = F.hflip(input)
             target = F.hflip(target)
         input = F.to_tensor(input)

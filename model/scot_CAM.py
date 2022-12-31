@@ -759,6 +759,7 @@ class SCOT_CAM:
         
         # hyperfeats_orisize = copy.deepcopy(hyperfeats)
         hyperfeats_orisize = hyperfeats
+        # print(img.size(),hyperfeats.size())
         hyperfeats = hyperfeats.view(hyperfeats.size()[0], -1).t() ##heperfeats size: (3136,50,75)->(3136,3750)->(3750,3136)=(HW,C)
 
         # Prune boxes on margins (Otherwise may cause error)
@@ -820,6 +821,10 @@ class SCOT_CAM:
             # hook,layers = util.hook_model(self.backbone1)
             # tic_backbone1 = time.time()
             self.backbone1(img)
+            # print(self.hook('layer4-2'),self.hook('layer4'))
+            # tmp = self.hook('layer4-2')-self.hook('layer4')
+            # print(tmp[tmp>0],tmp[tmp<0])
+            # assert(self.hook('layer4-2')==self.hook('layer4'))
         #     print(f'time for passing the image {time.time()-tic_backbone1}')
         # print(f'time for passing the image {time.time()-tic_pass}')
 
@@ -897,6 +902,7 @@ class SCOT_CAM:
 
                 #Try hooking clip
                 if backbone in ['resnet50_clip','resnet101_clip']:
+                    '''
                     layer_name = 'layer'+str(lid)+'-'+str(bid)+'-bn3'
                     assert(layer_name in self.layers.keys())
                     clip_feat = self.hook(layer_name)
@@ -905,9 +911,20 @@ class SCOT_CAM:
                     else:
                         res_name = 'layer'+str(lid)+'-'+str(bid-1)
                     assert(res_name in self.layers.keys())
+                    # print(layer_name,res_name)
                     clip_res = self.hook(res_name)
                     clip_feat += clip_res
+                    '''
+                    
+                    layer_name = 'layer'+str(lid)+'-'+str(bid)
+                    assert(layer_name in self.layers.keys())
+                    # print(layer_name)
+                    clip_feat = self.hook(layer_name)
+                    # ttmp = clip_feat-clip_tmp
+                    # print(ttmp[ttmp>0],ttmp[ttmp<0])
+                    
                     clip_feats.append(clip_feat)
+                    # clip_feats.append(clip_tmp)
 
 
             feat = self.backbone.__getattr__('layer%d' % lid)[bid].relu.forward(feat)

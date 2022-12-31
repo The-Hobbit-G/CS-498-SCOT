@@ -113,6 +113,8 @@ def run(datapath, benchmark, backbone, thres, alpha, hyperpixel, factorization,a
         assert(gta_img.shape==gta_shape==cs_img.shape==cs_shape)
             
         # c) Predict the correspondence of all pixels in src_img & evaluate performance
+
+        ##c.1 pred on gta labels
         prd_pixels = geometry.predict_kps(src_box, trg_box, pixels, confidence_ts) #get the correpondence pixel in cs of every pixel in gta
         prd_pixels[0] = torch.clamp(prd_pixels[0],min=0,max=cs_img.shape[-1]-1)
         prd_pixels[1] = torch.clamp(prd_pixels[1],min=0,max=cs_img.shape[-2]-1)
@@ -120,6 +122,18 @@ def run(datapath, benchmark, backbone, thres, alpha, hyperpixel, factorization,a
         # print(prd_pixels.shape,prd_pixels)
         gta_prd = torch.zeros_like(gta_ano)
         gta_prd[:,:,pixels[1].long(),pixels[0].long()] = cs_ano[:,:,prd_pixels[1].long(),prd_pixels[0].long()]
+
+
+        ##c.2 pred on cs labels
+#         prd_cs_pixels = geometry.predict_kps(trg_box, src_box, pixels, confidence_ts.T)
+#         prd_cs_pixels[0] = torch.clamp(prd_cs_pixels[0],min=0,max=cs_img.shape[-1]-1)
+#         prd_cs_pixels[1] = torch.clamp(prd_cs_pixels[1],min=0,max=cs_img.shape[-2]-1)
+
+#         cs_prd = torch.zeros_like(cs_ano)
+#         cs_prd[:,:,pixels[1].long(),pixels[0].long()] = gta_ano[:,:,prd_cs_pixels[1].long(),prd_cs_pixels[0].long()]
+
+
+
         toc = time.time()
         time_list.append(toc-tic)
 
@@ -128,7 +142,12 @@ def run(datapath, benchmark, backbone, thres, alpha, hyperpixel, factorization,a
         common_classes = gta_classes*cs_classes
         common_classes = torch.clamp(common_classes,max=1)
         # print(common_classes.shape)
+
+        ##d.1 evaluate acc for gta
         acc,inter,uni = evaluator.evaluate_acc(gta_prd,gta_ano,common_classes)
+
+        ##d.2 evaluate acc for cs
+        # acc_cs,inter_cs,uni_cs = evaluator.eval_acc_cs(cs_prd,cs_ano,common_classes)
 
         if acc == 0:
             zero_acc += 1
@@ -143,6 +162,8 @@ def run(datapath, benchmark, backbone, thres, alpha, hyperpixel, factorization,a
     #np.save('PCK_{}.npy'.format(save_file), PCK_list)
     if beamsearch:
         return (sum(evaluator.eval_buf['true']) / sum(evaluator.eval_buf['common_area'])) * 100.
+        # return ((sum(evaluator.eval_buf['true']) / sum(evaluator.eval_buf['common_area'])) * 100.+\
+        #     (sum(evaluator.eval_buf['true_cs']) / sum(evaluator.eval_buf['common_area_cs'])) * 100.)/2
     else:
         # logging.info('source points:'+str(sum(srcpt_list)*1.0/len(srcpt_list)))
         # logging.info('target points:'+str(sum(trgpt_list)*1.0/len(trgpt_list)))
